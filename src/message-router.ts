@@ -4,7 +4,13 @@ import { executeDevelopmentTask } from "./dev-task.js";
 import { handleAgentMessage, formatCommandReply } from "./agent/runtime.js";
 import { logIncomingMessage, logOutgoingMessage, logToolCall, MessageAuditContext } from "./audit.js";
 import { runCommand } from "./lib/command.js";
-import { createCommit, getDiffSummary, restartWithBuildGate, rollbackToLastStable } from "./release-control.js";
+import {
+  createCommit,
+  getDiffSummary,
+  pushCurrentBranch,
+  restartWithBuildGate,
+  rollbackToLastStable
+} from "./release-control.js";
 import { listRecentTasks } from "./task-queue.js";
 
 export const processIncomingText = async ({
@@ -33,6 +39,12 @@ export const processIncomingText = async ({
   if (text.startsWith("/commit ")) {
     const message = text.slice(8).trim();
     const replyText = await createCommit({ message });
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text === "/push") {
+    const replyText = await pushCurrentBranch();
     logOutgoingMessage(logger, context, replyText);
     return replyText;
   }

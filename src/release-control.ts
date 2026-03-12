@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 type ReleaseState = {
   lastCommittedHead?: string;
   lastSuccessfulRestartHead?: string;
+  lastPushedHead?: string;
   updatedAt?: string;
 };
 
@@ -63,11 +64,57 @@ const runTrustedCommand = async (
   };
 };
 
+const runGitExec = async (args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
+  try {
+    const result = await execFileAsync("git", args, {
+      cwd: config.projectRoot,
+      maxBuffer: 1024 * 1024
+    });
+
+    return {
+      ok: true,
+      stdout: result.stdout,
+      stderr: result.stderr
+    };
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string };
+    return {
+      ok: false,
+      stdout: failure.stdout ?? "",
+      stderr: failure.stderr ?? failure.message
+    };
+  }
+};
+
+const runVerificationSummary = async (): Promise<string> => {
+  const check = await runTrustedCommand("npm run check");
+  const build = await runTrustedCommand("npm run build");
+
+  const lines = [
+    "verification:",
+    `- check: ${check.ok ? "ok" : "failed"}`,
+    `- build: ${build.ok ? "ok" : "failed"}`
+  ];
+
+  if (!check.ok) {
+    lines.push(check.stderr.trim() || check.stdout.trim());
+  }
+
+  if (!build.ok) {
+    lines.push(build.stderr.trim() || build.stdout.trim());
+  }
+
+  return lines.filter(Boolean).join("\n");
+};
+
 export const getDiffSummary = async (): Promise<string> => {
   const diffStat = await runTrustedCommand("git diff --stat");
   const status = await runTrustedCommand("git status --short");
+  const branch = await runTrustedCommand("git status --short --branch");
 
   return [
+    branch.stdout.split("\n")[0]?.trim() || "branch: unknown",
+    "",
     "git diff --stat:",
     diffStat.stdout.trim() || "(no unstaged diff stat)",
     "",
@@ -81,6 +128,14 @@ export const createCommit = async ({
 }: {
   message: string;
 }): Promise<string> => {
+  const verification = await runVerificationSummary();
+  if (verification.includes("failed")) {
+    return [
+      "commit blocked: verification failed.",
+      verification
+    ].join("\n\n");
+  }
+
   const status = await runTrustedCommand("git status --short");
   if (!status.ok) {
     return `git status failed:\n${status.stderr}`;
@@ -90,26 +145,14 @@ export const createCommit = async ({
     return "working tree clean, nothing to commit.";
   }
 
-  try {
-    await execFileAsync("git", ["add", "."], {
-      cwd: config.projectRoot,
-      maxBuffer: 1024 * 1024
-    });
-  } catch (error) {
-    const failure = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string };
-    return `git add failed:\n${failure.stderr || failure.stdout || failure.message}`;
+  const add = await runGitExec(["add", "."]);
+  if (!add.ok) {
+    return `git add failed:\n${add.stderr || add.stdout}`;
   }
 
-  let commitStdout = "";
-  try {
-    const result = await execFileAsync("git", ["commit", "-m", message], {
-      cwd: config.projectRoot,
-      maxBuffer: 1024 * 1024
-    });
-    commitStdout = result.stdout;
-  } catch (error) {
-    const failure = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string };
-    return `git commit failed:\n${failure.stderr || failure.stdout || failure.message}`;
+  const commit = await runGitExec(["commit", "-m", message]);
+  if (!commit.ok) {
+    return `git commit failed:\n${commit.stderr || commit.stdout}`;
   }
 
   const head = await runTrustedCommand("git rev-parse --short HEAD");
@@ -118,7 +161,9 @@ export const createCommit = async ({
   await saveState(state);
 
   return [
-    commitStdout.trim() || "commit created.",
+    verification,
+    "",
+    commit.stdout.trim() || "commit created.",
     `head: ${head.stdout.trim()}`
   ].join("\n");
 };
@@ -165,4 +210,33 @@ export const rollbackToLastStable = async (): Promise<string> => {
   }
 
   return `rolled back working tree to ${state.lastSuccessfulRestartHead}.`;
+};
+
+export const pushCurrentBranch = async (): Promise<string> => {
+  const status = await runTrustedCommand("git status --short");
+  if (!status.ok) {
+    return `git status failed:\n${status.stderr}`;
+  }
+
+  if (status.stdout.trim()) {
+    return [
+      "push blocked: working tree is not clean.",
+      status.stdout.trim()
+    ].join("\n");
+  }
+
+  const push = await runGitExec(["push"]);
+  if (!push.ok) {
+    return `git push failed:\n${push.stderr || push.stdout}`;
+  }
+
+  const head = await runTrustedCommand("git rev-parse --short HEAD");
+  const state = await loadState();
+  state.lastPushedHead = head.stdout.trim();
+  await saveState(state);
+
+  return [
+    push.stdout.trim() || push.stderr.trim() || "push completed.",
+    `head: ${head.stdout.trim()}`
+  ].join("\n");
 };
