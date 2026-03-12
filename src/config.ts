@@ -29,6 +29,7 @@ export const config = {
   workspaceRoot: resolveWorkspaceRoot(process.env.WORKSPACE_ROOT),
   commandTimeoutMs: toInt(process.env.COMMAND_TIMEOUT_MS, 10_000),
   commandOutputLimit: toInt(process.env.COMMAND_OUTPUT_LIMIT, 8_192),
+  sessionStoreDir: resolve(expandHomeDir(process.env.SESSION_STORE_DIR ?? ".blueclaw/sessions")),
   feishu: {
     appId: process.env.FEISHU_APP_ID ?? "",
     appSecret: process.env.FEISHU_APP_SECRET ?? "",
@@ -36,6 +37,12 @@ export const config = {
     encryptKey: process.env.FEISHU_ENCRYPT_KEY ?? "",
     botName: process.env.FEISHU_BOT_NAME ?? "blueclaw",
     eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket"
+  },
+  llm: {
+    baseUrl: process.env.LLM_BASE_URL ?? "",
+    apiKey: process.env.LLM_API_KEY ?? "",
+    model: process.env.LLM_MODEL ?? "",
+    maxSteps: toInt(process.env.LLM_MAX_STEPS, 4)
   }
 };
 

@@ -15,6 +15,9 @@
 - `GET /healthz`
 - `POST /webhooks/feishu/events`
 - 飞书 WebSocket 长连事件接入
+- OpenAI 兼容 LLM 适配器
+- 文件级会话存储
+- 工具注册表与工具调用闭环
 - `/run <command>` 命令执行
 - 基础命令白名单和 shell 操作符拦截
 - 飞书回消息客户端
@@ -28,6 +31,8 @@
 - 如果 `WORKSPACE_ROOT` 不存在，会自动回退到当前项目目录
 - 如果设置 `FEISHU_EVENT_MODE=webhook`，则只使用 webhook 模式
 - 如果设置 `FEISHU_EVENT_MODE=both`，则同时保留 webhook 和 websocket
+- 如果配置了 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`，自然语言消息会进入 LLM Agent 模式
+- 如果未配置 LLM，则自然语言消息仍走规则兜底
 
 ## 飞书通信方式
 
@@ -48,6 +53,43 @@
 两种入口最终都会汇总到统一消息路由：
 
 - [src/message-router.ts](/Users/levy/dev/codex/blueclaw/src/message-router.ts)
+
+## LLM Agent
+
+当前已经接入一个最小可用的 LLM Agent 闭环：
+
+1. 飞书消息进入统一消息路由
+2. 非 `/run` 文本进入 [src/agent/runtime.ts](/Users/levy/dev/codex/blueclaw/src/agent/runtime.ts)
+3. Runtime 从 [src/storage/session-store.ts](/Users/levy/dev/codex/blueclaw/src/storage/session-store.ts) 读取最近会话
+4. 调用 [src/llm/openai-compatible.ts](/Users/levy/dev/codex/blueclaw/src/llm/openai-compatible.ts)
+5. 模型可选择调用工具：
+   - [src/tools/registry.ts](/Users/levy/dev/codex/blueclaw/src/tools/registry.ts)
+   - `shell.exec`
+   - `workspace.read_file`
+   - `workspace.list_files`
+6. 工具结果回填给模型，生成最终回复
+
+会话默认保存在：
+
+- `.blueclaw/sessions/`
+
+### LLM 配置
+
+需要配置：
+
+```env
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+LLM_MAX_STEPS=4
+SESSION_STORE_DIR=.blueclaw/sessions
+```
+
+说明：
+
+- `LLM_BASE_URL` 应指向 OpenAI 兼容接口前缀，当前代码会拼接 `/chat/completions`
+- `LLM_MODEL` 由你选择的模型提供方决定
+- `LLM_MAX_STEPS` 控制单轮最多工具调用回合数
 
 ## 本地启动
 

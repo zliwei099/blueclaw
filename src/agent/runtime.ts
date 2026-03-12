@@ -1,4 +1,10 @@
-import { runCommand } from "../lib/command.js";
+import { FastifyBaseLogger } from "fastify";
+
+import { config } from "../config.js";
+import { loadSessionMessages, saveSessionMessages } from "../storage/session-store.js";
+import { executeTool, toolDefinitions } from "../tools/registry.js";
+import { ChatMessage } from "../types.js";
+import { generateAssistantTurn, isLlmConfigured } from "../llm/openai-compatible.js";
 
 const NATURAL_LANGUAGE_HINTS = [
   { pattern: /当前目录|pwd|在哪里/i, command: "pwd" },
@@ -6,15 +12,105 @@ const NATURAL_LANGUAGE_HINTS = [
   { pattern: /git 状态|git status/i, command: "git status --short --branch" }
 ];
 
-export const handleAgentMessage = async (input: string): Promise<string> => {
+const SYSTEM_PROMPT = [
+  "You are blueclaw, a coding and automation assistant running inside a controlled workspace.",
+  "Prefer using tools when the user asks about repository state, files, commands, or project changes.",
+  "Be concise and practical.",
+  "Only rely on tool results for repository-specific facts.",
+  "If a tool fails, explain the failure briefly and continue if possible."
+].join(" ");
+
+export const handleAgentMessage = async ({
+  input,
+  sessionId,
+  logger
+}: {
+  input: string;
+  sessionId: string;
+  logger: FastifyBaseLogger;
+}): Promise<string> => {
+  if (!isLlmConfigured()) {
+    return handleHintFallback(input);
+  }
+
+  const sessionMessages = await loadSessionMessages(sessionId);
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...sessionMessages,
+    { role: "user", content: input }
+  ];
+
+  for (let step = 0; step < config.llm.maxSteps; step += 1) {
+    const turn = await generateAssistantTurn({
+      messages,
+      tools: toolDefinitions
+    });
+
+    if (turn.toolCalls.length === 0) {
+      const reply = turn.text || "我没有得到有效结果。";
+      await saveSessionMessages(sessionId, [
+        ...sessionMessages,
+        { role: "user", content: input },
+        { role: "assistant", content: reply }
+      ]);
+      return reply;
+    }
+
+    messages.push({
+      role: "assistant",
+      content: turn.text || "",
+      toolCalls: turn.toolCalls
+    });
+
+    for (const toolCall of turn.toolCalls) {
+      let parsedArgs: Record<string, unknown> = {};
+      try {
+        parsedArgs = JSON.parse(toolCall.argumentsText) as Record<string, unknown>;
+      } catch {
+        parsedArgs = {};
+      }
+
+      logger.info(
+        {
+          sessionId,
+          tool: toolCall.name,
+          args: parsedArgs
+        },
+        "llm requested tool call"
+      );
+
+      let result: unknown;
+      try {
+        result = await executeTool(toolCall.name, parsedArgs);
+      } catch (error) {
+        result = {
+          ok: false,
+          error: error instanceof Error ? error.message : "unknown tool error"
+        };
+      }
+
+      messages.push({
+        role: "tool",
+        name: toolCall.name,
+        toolCallId: toolCall.id,
+        content: JSON.stringify(result)
+      });
+    }
+  }
+
+  return "工具调用达到本轮上限，请缩小问题范围后重试。";
+};
+
+const handleHintFallback = async (input: string): Promise<string> => {
   const hint = NATURAL_LANGUAGE_HINTS.find((item) => item.pattern.test(input));
   if (!hint) {
     return [
-      "我目前只支持最小能力集。",
-      "可直接发送 `/run <command>`，或使用类似“看看当前目录有哪些文件”“帮我看 git 状态”的请求。"
+      "LLM 还没有配置完成。",
+      "可先直接发送 `/run <command>`，或配置 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL` 后使用自然语言 Agent。"
     ].join("\n");
   }
 
+  const { runCommand } = await import("../lib/command.js");
   const outcome = await runCommand(hint.command);
   if (!outcome.ok) {
     return `工具调用被拒绝：${outcome.reason}`;

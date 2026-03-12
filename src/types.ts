@@ -7,6 +7,32 @@ export type CommandExecutionResult = {
   truncated: boolean;
 };
 
+export type ChatMessage =
+  | { role: "system" | "user" | "assistant"; content: string }
+  | {
+      role: "assistant";
+      content: string;
+      toolCalls: ToolCallRequest[];
+    }
+  | {
+      role: "tool";
+      content: string;
+      toolCallId: string;
+      name: string;
+    };
+
+export type ToolDefinition = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+};
+
+export type ToolCallRequest = {
+  id: string;
+  name: string;
+  argumentsText: string;
+};
+
 export type FeishuEvent = {
   schema?: string;
   header?: {

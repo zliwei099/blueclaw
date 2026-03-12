@@ -49,7 +49,11 @@ export const processIncomingText = async ({
     return replyText;
   }
 
-  const replyText = await handleAgentMessage(text);
+  const replyText = await handleAgentMessage({
+    input: text,
+    sessionId: context.chatId ?? context.userId ?? "default",
+    logger
+  });
   logOutgoingMessage(logger, context, replyText);
   return replyText;
 };
