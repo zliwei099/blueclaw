@@ -6,8 +6,7 @@ import {
   verifyFeishuToken
 } from "./adapters/feishu.js";
 import { sendFeishuReply } from "./adapters/feishu-client.js";
-import { handleAgentMessage, formatCommandReply } from "./agent/runtime.js";
-import { runCommand } from "./lib/command.js";
+import { processIncomingText } from "./message-router.js";
 import { FeishuEvent } from "./types.js";
 
 export const registerRoutes = (app: FastifyInstance): void => {
@@ -40,19 +39,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
       "received feishu event"
     );
 
-    let replyText = "empty or unsupported message";
-
-    if (text.startsWith("/run ")) {
-      const command = text.slice(5).trim();
-      const outcome = await runCommand(command);
-      if (!outcome.ok) {
-        replyText = `command rejected: ${outcome.reason}`;
-      } else {
-        replyText = formatCommandReply(command, outcome.cwd, outcome.result);
-      }
-    } else if (text) {
-      replyText = await handleAgentMessage(text);
-    }
+    const replyText = await processIncomingText(text);
 
     try {
       const sent = await sendFeishuReply({

@@ -14,6 +14,7 @@
 - Fastify HTTP 服务
 - `GET /healthz`
 - `POST /webhooks/feishu/events`
+- 飞书 WebSocket 长连事件接入
 - `/run <command>` 命令执行
 - 基础命令白名单和 shell 操作符拦截
 - 飞书回消息客户端
@@ -21,8 +22,31 @@
 
 当前默认行为：
 
+- 默认使用飞书 `websocket` 长连模式，更适合本地开发
 - 如果配置了飞书 `app_id` / `app_secret`，收到消息后会调用飞书回复接口
 - 如果未配置飞书凭证，会返回降级响应，方便本地联调
+- 如果设置 `FEISHU_EVENT_MODE=webhook`，则只使用 webhook 模式
+- 如果设置 `FEISHU_EVENT_MODE=both`，则同时保留 webhook 和 websocket
+
+## 飞书通信方式
+
+当前代码支持两种飞书事件入口：
+
+1. WebSocket 长连
+
+- 代码入口：[src/adapters/feishu-ws.ts](/Users/levy/dev/codex/blueclaw/src/adapters/feishu-ws.ts)
+- 服务主动连接飞书，不需要公网 webhook
+- 推荐作为本地开发默认模式
+
+2. Webhook 回调
+
+- 代码入口：[src/routes.ts](/Users/levy/dev/codex/blueclaw/src/routes.ts)
+- 飞书把事件推送到 `POST /webhooks/feishu/events`
+- 更适合部署到公网后的生产接入
+
+两种入口最终都会汇总到统一消息路由：
+
+- [src/message-router.ts](/Users/levy/dev/codex/blueclaw/src/message-router.ts)
 
 ## 本地启动
 
@@ -41,7 +65,8 @@ cp .env.example .env
 3. 启动服务
 
 ```bash
-npm run dev
+npm run build
+node dist/index.js
 ```
 
 4. 类型检查和构建

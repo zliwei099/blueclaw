@@ -20,6 +20,7 @@ export const config = {
     appSecret: process.env.FEISHU_APP_SECRET ?? "",
     verificationToken: process.env.FEISHU_VERIFICATION_TOKEN ?? "",
     encryptKey: process.env.FEISHU_ENCRYPT_KEY ?? "",
-    botName: process.env.FEISHU_BOT_NAME ?? "blueclaw"
+    botName: process.env.FEISHU_BOT_NAME ?? "blueclaw",
+    eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket"
   }
 };

@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from "fastify";
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
 
+import { startFeishuWsClient } from "./adapters/feishu-ws.js";
 import { config } from "./config.js";
 import { registerRoutes } from "./routes.js";
 
@@ -32,6 +33,7 @@ const start = async (): Promise<void> => {
       port: config.port,
       host: config.host
     });
+    startFeishuWsClient(app.log);
   } catch (error) {
     app.log.error(error);
     process.exit(1);
