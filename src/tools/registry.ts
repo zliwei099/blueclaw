@@ -1,10 +1,46 @@
 import { runCommand } from "../lib/command.js";
+import { loadSkillCatalog, readSkillContent } from "../skills/catalog.js";
+import { loadAgentMemory, rememberAgentItems } from "../storage/agent-memory.js";
+import { inspectSystemTarget } from "../system-inspect.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./workspace.js";
 import { ToolDefinition } from "../types.js";
 
 type ToolExecutor = (args: Record<string, unknown>) => Promise<unknown>;
 
 const toolExecutors = new Map<string, ToolExecutor>([
+  [
+    "memory.get",
+    async () => loadAgentMemory()
+  ],
+  [
+    "memory.remember",
+    async (args) =>
+      rememberAgentItems({
+        category:
+          args.category === "operatorProfile" ||
+          args.category === "preferences" ||
+          args.category === "environmentFacts" ||
+          args.category === "evolutionNotes"
+            ? args.category
+            : "evolutionNotes",
+        items: Array.isArray(args.items) ? args.items.map((item) => String(item)) : [String(args.item ?? "")]
+      })
+  ],
+  [
+    "skill.list",
+    async () => loadSkillCatalog()
+  ],
+  [
+    "skill.read",
+    async (args) => readSkillContent(String(args.skillId ?? ""))
+  ],
+  [
+    "system.inspect",
+    async (args) =>
+      inspectSystemTarget(
+        args.target === "disk" || args.target === "ports" || args.target === "service" ? args.target : "service"
+      )
+  ],
   [
     "shell.exec",
     async (args) => {
@@ -33,6 +69,64 @@ const toolExecutors = new Map<string, ToolExecutor>([
 ]);
 
 export const toolDefinitions: ToolDefinition[] = [
+  {
+    name: "memory.get",
+    description: "Read the agent's persistent long-term memory about operator preferences, environment facts, and evolution notes.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "memory.remember",
+    description: "Store durable long-term memory items for future conversations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          enum: ["operatorProfile", "preferences", "environmentFacts", "evolutionNotes"]
+        },
+        items: {
+          type: "array",
+          items: { type: "string" }
+        },
+        item: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "skill.list",
+    description: "List installed skills available to the agent.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "skill.read",
+    description: "Read the full instructions for a specific installed skill.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skillId: { type: "string", description: "Skill id from skill.list." }
+      },
+      required: ["skillId"]
+    }
+  },
+  {
+    name: "system.inspect",
+    description: "Inspect high-level runtime, disk, or listening port state on this machine.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          enum: ["service", "disk", "ports"]
+        }
+      }
+    }
+  },
   {
     name: "shell.exec",
     description: "Run a workspace-safe shell command using the built-in policy guard.",

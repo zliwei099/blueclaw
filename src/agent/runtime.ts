@@ -2,6 +2,8 @@ import { FastifyBaseLogger } from "fastify";
 
 import { config } from "../config.js";
 import { getLlmUnavailableReason, generateAssistantTurn, isLlmConfigured } from "../llm/provider.js";
+import { formatSkillCatalog, loadSkillCatalog } from "../skills/catalog.js";
+import { formatAgentMemory, loadAgentMemory, rememberAgentItems } from "../storage/agent-memory.js";
 import {
   extractSessionMemory,
   formatSessionMemory,
@@ -19,11 +21,13 @@ const NATURAL_LANGUAGE_HINTS = [
 ];
 
 const SYSTEM_PROMPT = [
-  "You are blueclaw, a coding and automation assistant running inside a controlled workspace.",
-  "Prefer using tools when the user asks about repository state, files, commands, or project changes.",
-  "Be concise and practical.",
-  "Only rely on tool results for repository-specific facts.",
-  "If a tool fails, explain the failure briefly and continue if possible."
+  "You are blueclaw, a general-purpose coding and automation agent running inside a controlled workspace on a real computer.",
+  "You can use built-in tools for repository actions, system inspection, persistent memory, and installed skills.",
+  "Prefer tools for any machine-specific or repository-specific fact.",
+  "Use persistent memory to remember durable operator preferences and environment facts.",
+  "Use installed skills when they fit the task better than ad-hoc reasoning.",
+  "Do not claim unrestricted power: stay within tool and policy boundaries, and explain blocked actions clearly.",
+  "Be concise, practical, and execution-oriented."
 ].join(" ");
 
 export const handleAgentMessage = async ({
@@ -42,8 +46,28 @@ export const handleAgentMessage = async ({
   const { messages: sessionMessages, memory: sessionMemory } = await loadSessionState(sessionId);
   const nextMemory = mergeSessionMemory(sessionMemory, extractSessionMemory(input));
   const memoryPrompt = formatSessionMemory(nextMemory);
+  const agentMemory = await loadAgentMemory();
+  const agentMemoryPrompt = formatAgentMemory(agentMemory);
+  const skills = await loadSkillCatalog();
+  const skillsPrompt = formatSkillCatalog(skills);
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...(agentMemoryPrompt
+      ? [
+          {
+            role: "system" as const,
+            content: `Persistent agent memory:\n${agentMemoryPrompt}\nPrefer updating it when the user states durable rules or preferences.`
+          }
+        ]
+      : []),
+    ...(skillsPrompt
+      ? [
+          {
+            role: "system" as const,
+            content: `Installed skills:\n${skillsPrompt}\nIf a task matches one of these, inspect it with skill.read before acting.`
+          }
+        ]
+      : []),
     ...(memoryPrompt
       ? [
           {
@@ -69,6 +93,7 @@ export const handleAgentMessage = async ({
           messages: [...sessionMessages, { role: "user", content: input }, { role: "assistant", content: reply }],
           memory: nextMemory
         });
+        await rememberAgentEvolution(input, reply);
         return reply;
       }
 
@@ -132,6 +157,36 @@ export const handleAgentMessage = async ({
   });
 
   return "工具调用达到本轮上限，请缩小问题范围后重试。";
+};
+
+const rememberAgentEvolution = async (input: string, reply: string): Promise<void> => {
+  const lessons = extractEvolutionNotes(input, reply);
+  if (lessons.length === 0) {
+    return;
+  }
+
+  await rememberAgentItems({
+    category: "evolutionNotes",
+    items: lessons
+  });
+};
+
+const extractEvolutionNotes = (input: string, reply: string): string[] => {
+  const candidates = [input, reply];
+  const notes: string[] = [];
+
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (!trimmed || trimmed.length > 160) {
+      continue;
+    }
+
+    if (/记住|remember|以后|下次|默认|always|default/i.test(trimmed)) {
+      notes.push(trimmed);
+    }
+  }
+
+  return notes;
 };
 
 const handleHintFallback = async (input: string): Promise<string> => {

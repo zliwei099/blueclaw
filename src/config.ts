@@ -31,6 +31,10 @@ export const config = {
   commandTimeoutMs: toInt(process.env.COMMAND_TIMEOUT_MS, 10_000),
   commandOutputLimit: toInt(process.env.COMMAND_OUTPUT_LIMIT, 8_192),
   sessionStoreDir: resolve(expandHomeDir(process.env.SESSION_STORE_DIR ?? ".blueclaw/sessions")),
+  skillRoots: resolveRoots(
+    process.env.AGENT_SKILL_ROOTS,
+    [resolve(homedir(), ".codex/skills/.system"), resolve(process.cwd(), "skills")].filter((value) => existsSync(value))
+  ),
   feishu: {
     appId: process.env.FEISHU_APP_ID ?? "",
     appSecret: process.env.FEISHU_APP_SECRET ?? "",
@@ -51,6 +55,19 @@ export const config = {
     codexFullAuto: (process.env.LLM_CODEX_FULL_AUTO ?? "true") !== "false"
   }
 };
+
+function resolveRoots(value: string | undefined, fallback: string[]): string[] {
+  if (!value) {
+    return fallback;
+  }
+
+  return value
+    .split(",")
+    .map((item) => resolve(expandHomeDir(item.trim())))
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .filter((item) => existsSync(item));
+}
 
 function resolveWorkspaceRoot(value: string | undefined): string {
   const fallback = process.cwd();
