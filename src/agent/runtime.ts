@@ -2,7 +2,13 @@ import { FastifyBaseLogger } from "fastify";
 
 import { config } from "../config.js";
 import { getLlmUnavailableReason, generateAssistantTurn, isLlmConfigured } from "../llm/provider.js";
-import { loadSessionMessages, saveSessionMessages } from "../storage/session-store.js";
+import {
+  extractSessionMemory,
+  formatSessionMemory,
+  loadSessionState,
+  mergeSessionMemory,
+  saveSessionState
+} from "../storage/session-store.js";
 import { executeTool, toolDefinitions } from "../tools/registry.js";
 import { ChatMessage } from "../types.js";
 
@@ -33,9 +39,19 @@ export const handleAgentMessage = async ({
     return handleHintFallback(input);
   }
 
-  const sessionMessages = await loadSessionMessages(sessionId);
+  const { messages: sessionMessages, memory: sessionMemory } = await loadSessionState(sessionId);
+  const nextMemory = mergeSessionMemory(sessionMemory, extractSessionMemory(input));
+  const memoryPrompt = formatSessionMemory(nextMemory);
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...(memoryPrompt
+      ? [
+          {
+            role: "system" as const,
+            content: `Known conversation memory:\n${memoryPrompt}\nUse it only when it helps with the current request.`
+          }
+        ]
+      : []),
     ...sessionMessages,
     { role: "user", content: input }
   ];
@@ -49,11 +65,10 @@ export const handleAgentMessage = async ({
 
       if (turn.toolCalls.length === 0) {
         const reply = turn.text || "我没有得到有效结果。";
-        await saveSessionMessages(sessionId, [
-          ...sessionMessages,
-          { role: "user", content: input },
-          { role: "assistant", content: reply }
-        ]);
+        await saveSessionState(sessionId, {
+          messages: [...sessionMessages, { role: "user", content: input }, { role: "assistant", content: reply }],
+          memory: nextMemory
+        });
         return reply;
       }
 
@@ -110,6 +125,11 @@ export const handleAgentMessage = async ({
 
     return `LLM provider 调用失败：${error instanceof Error ? error.message : "unknown error"}`;
   }
+
+  await saveSessionState(sessionId, {
+    messages: [...sessionMessages, { role: "user", content: input }],
+    memory: nextMemory
+  });
 
   return "工具调用达到本轮上限，请缩小问题范围后重试。";
 };
