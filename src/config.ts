@@ -25,7 +25,7 @@ const expandHomeDir = (value: string): string => {
 
 export const config = {
   port: toInt(process.env.PORT, 3000),
-  host: process.env.HOST ?? "0.0.0.0",
+  host: process.env.HOST ?? "127.0.0.1",
   workspaceRoot: resolveWorkspaceRoot(process.env.WORKSPACE_ROOT),
   commandTimeoutMs: toInt(process.env.COMMAND_TIMEOUT_MS, 10_000),
   commandOutputLimit: toInt(process.env.COMMAND_OUTPUT_LIMIT, 8_192),
