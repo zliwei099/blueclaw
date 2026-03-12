@@ -84,18 +84,22 @@ LLM_API_KEY=你的_openai_api_key
 LLM_MODEL=gpt-5.4
 LLM_MAX_STEPS=4
 SESSION_STORE_DIR=.blueclaw/sessions
+LLM_CODEX_BIN=codex
+LLM_CODEX_SANDBOX=workspace-write
+LLM_CODEX_FULL_AUTO=true
 ```
 
 说明：
 
 - `LLM_PROVIDER` 当前支持：
   - `openai-compatible`
-  - `openai-codex`（已预留入口，尚未接入）
+  - `openai-codex`（通过本机已登录的 `codex exec` 调用）
 - `LLM_BASE_URL` 应指向 OpenAI 兼容接口前缀，当前代码会拼接 `/chat/completions`
 - `LLM_MODEL` 由你选择的模型提供方决定
 - `LLM_MAX_STEPS` 控制单轮最多工具调用回合数
 - 当前机器上的 Codex 本地配置默认模型是 `gpt-5.4`
-- 当前机器上的 Codex 登录模式是 `chatgpt`，没有可直接复用的 `OPENAI_API_KEY`
+- `openai-codex` provider 当前不会自己直连 `chatgpt.com/backend-api/api/codex`
+- 它复用本机已登录的 `codex exec`，因此能吃到本地 ChatGPT/Codex 登录态
 
 ## 本地启动
 

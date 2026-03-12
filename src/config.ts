@@ -43,7 +43,10 @@ export const config = {
     baseUrl: process.env.LLM_BASE_URL ?? "",
     apiKey: process.env.LLM_API_KEY ?? "",
     model: process.env.LLM_MODEL ?? "",
-    maxSteps: toInt(process.env.LLM_MAX_STEPS, 4)
+    maxSteps: toInt(process.env.LLM_MAX_STEPS, 4),
+    codexBin: process.env.LLM_CODEX_BIN ?? "codex",
+    codexSandbox: process.env.LLM_CODEX_SANDBOX ?? "workspace-write",
+    codexFullAuto: (process.env.LLM_CODEX_FULL_AUTO ?? "true") !== "false"
   }
 };
 

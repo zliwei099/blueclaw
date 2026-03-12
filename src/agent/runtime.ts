@@ -40,62 +40,75 @@ export const handleAgentMessage = async ({
     { role: "user", content: input }
   ];
 
-  for (let step = 0; step < config.llm.maxSteps; step += 1) {
-    const turn = await generateAssistantTurn({
-      messages,
-      tools: toolDefinitions
-    });
+  try {
+    for (let step = 0; step < config.llm.maxSteps; step += 1) {
+      const turn = await generateAssistantTurn({
+        messages,
+        tools: toolDefinitions
+      });
 
-    if (turn.toolCalls.length === 0) {
-      const reply = turn.text || "我没有得到有效结果。";
-      await saveSessionMessages(sessionId, [
-        ...sessionMessages,
-        { role: "user", content: input },
-        { role: "assistant", content: reply }
-      ]);
-      return reply;
-    }
-
-    messages.push({
-      role: "assistant",
-      content: turn.text || "",
-      toolCalls: turn.toolCalls
-    });
-
-    for (const toolCall of turn.toolCalls) {
-      let parsedArgs: Record<string, unknown> = {};
-      try {
-        parsedArgs = JSON.parse(toolCall.argumentsText) as Record<string, unknown>;
-      } catch {
-        parsedArgs = {};
-      }
-
-      logger.info(
-        {
-          sessionId,
-          tool: toolCall.name,
-          args: parsedArgs
-        },
-        "llm requested tool call"
-      );
-
-      let result: unknown;
-      try {
-        result = await executeTool(toolCall.name, parsedArgs);
-      } catch (error) {
-        result = {
-          ok: false,
-          error: error instanceof Error ? error.message : "unknown tool error"
-        };
+      if (turn.toolCalls.length === 0) {
+        const reply = turn.text || "我没有得到有效结果。";
+        await saveSessionMessages(sessionId, [
+          ...sessionMessages,
+          { role: "user", content: input },
+          { role: "assistant", content: reply }
+        ]);
+        return reply;
       }
 
       messages.push({
-        role: "tool",
-        name: toolCall.name,
-        toolCallId: toolCall.id,
-        content: JSON.stringify(result)
+        role: "assistant",
+        content: turn.text || "",
+        toolCalls: turn.toolCalls
       });
+
+      for (const toolCall of turn.toolCalls) {
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = JSON.parse(toolCall.argumentsText) as Record<string, unknown>;
+        } catch {
+          parsedArgs = {};
+        }
+
+        logger.info(
+          {
+            sessionId,
+            tool: toolCall.name,
+            args: parsedArgs
+          },
+          "llm requested tool call"
+        );
+
+        let result: unknown;
+        try {
+          result = await executeTool(toolCall.name, parsedArgs);
+        } catch (error) {
+          result = {
+            ok: false,
+            error: error instanceof Error ? error.message : "unknown tool error"
+          };
+        }
+
+        messages.push({
+          role: "tool",
+          name: toolCall.name,
+          toolCallId: toolCall.id,
+          content: JSON.stringify(result)
+        });
+      }
     }
+  } catch (error) {
+    logger.error(
+      {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+        provider: config.llm.provider
+      },
+      "llm provider failed"
+    );
+
+    return `LLM provider 调用失败：${error instanceof Error ? error.message : "unknown error"}`;
   }
 
   return "工具调用达到本轮上限，请缩小问题范围后重试。";
