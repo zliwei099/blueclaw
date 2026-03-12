@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { config } from "../../config.js";
@@ -16,7 +16,8 @@ export type CodexRuntimeState = {
 
 const runtimePath = (sessionId: string): string =>
   join(config.sessionStoreDir, "codex-runtime", `${sanitize(sessionId)}.json`);
-const runtimeLogPath = join(config.sessionStoreDir, "codex-runtime", "events.log");
+const runtimeDir = join(config.sessionStoreDir, "codex-runtime");
+const runtimeLogPath = join(runtimeDir, "events.log");
 
 const sanitize = (value: string): string => value.replace(/[^a-zA-Z0-9._-]/g, "_");
 
@@ -97,4 +98,49 @@ export const appendCodexRuntimeEvent = async ({
     }) + "\n",
     "utf8"
   );
+};
+
+export const listCodexRuntimeStates = async (): Promise<CodexRuntimeState[]> => {
+  try {
+    const entries = await readdir(runtimeDir);
+    const states = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith(".json"))
+        .map(async (entry) => {
+          try {
+            const raw = await readFile(join(runtimeDir, entry), "utf8");
+            return JSON.parse(raw) as CodexRuntimeState;
+          } catch {
+            return undefined;
+          }
+        })
+    );
+
+    return states
+      .filter((state): state is CodexRuntimeState => Boolean(state))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  } catch {
+    return [];
+  }
+};
+
+export const loadRecentCodexRuntimeEvents = async (limit = 40): Promise<
+  Array<{
+    at: string;
+    sessionId: string;
+    type: string;
+    detail: string;
+  }>
+> => {
+  try {
+    const raw = await readFile(runtimeLogPath, "utf8");
+    return raw
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => JSON.parse(line) as { at: string; sessionId: string; type: string; detail: string });
+  } catch {
+    return [];
+  }
 };
