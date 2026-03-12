@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { FastifyBaseLogger } from "fastify";
 
+import { config } from "./config.js";
+
 let restartScheduled = false;
 
 export const scheduleServiceRestart = (logger: FastifyBaseLogger): boolean => {
@@ -11,8 +13,10 @@ export const scheduleServiceRestart = (logger: FastifyBaseLogger): boolean => {
   restartScheduled = true;
 
   const command = [
-    "sleep 1",
+    "sleep 2",
     `cd ${shellQuote(process.cwd())}`,
+    `export PORT=${shellQuote(String(config.port))}`,
+    `export HOST=${shellQuote(config.host)}`,
     `exec ${shellQuote(process.execPath)} dist/index.js >> .blueclaw/restart.log 2>&1`
   ].join("; ");
 
