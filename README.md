@@ -25,6 +25,7 @@
 - 默认使用飞书 `websocket` 长连模式，更适合本地开发
 - 如果配置了飞书 `app_id` / `app_secret`，收到消息后会调用飞书回复接口
 - 如果未配置飞书凭证，会返回降级响应，方便本地联调
+- 如果 `WORKSPACE_ROOT` 不存在，会自动回退到当前项目目录
 - 如果设置 `FEISHU_EVENT_MODE=webhook`，则只使用 webhook 模式
 - 如果设置 `FEISHU_EVENT_MODE=both`，则同时保留 webhook 和 websocket
 

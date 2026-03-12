@@ -54,17 +54,16 @@ export const startFeishuWsClient = (logger: FastifyBaseLogger): { started: boole
   ).register({
     "im.message.receive_v1": async (data: FeishuMessageReceiveEvent) => {
       const text = parseMessageText(data.message.content);
-      const replyText = await processIncomingText(text);
-
-      logger.info(
-        {
+      const replyText = await processIncomingText({
+        text,
+        logger,
+        context: {
           source: "feishu-ws",
           messageId: data.message.message_id,
           chatId: data.message.chat_id,
           userId: data.sender?.sender_id?.user_id
-        },
-        "received feishu websocket event"
-      );
+        }
+      });
 
       const delivery = await sendFeishuReply({
         messageId: data.message.message_id,

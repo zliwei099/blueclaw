@@ -29,17 +29,16 @@ export const registerRoutes = (app: FastifyInstance): void => {
     const text = parseFeishuText(event);
     const context = getFeishuReplyContext(event);
 
-    app.log.info(
-      {
-        eventType: event.header?.event_type,
+    const replyText = await processIncomingText({
+      text,
+      logger: app.log,
+      context: {
+        source: "feishu-webhook",
         messageId: context.messageId,
         chatId: context.chatId,
         userId: context.userId
-      },
-      "received feishu event"
-    );
-
-    const replyText = await processIncomingText(text);
+      }
+    });
 
     try {
       const sent = await sendFeishuReply({

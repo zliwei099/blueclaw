@@ -1,4 +1,6 @@
+import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 const toInt = (value: string | undefined, fallback: number): number => {
   if (!value) {
@@ -9,10 +11,22 @@ const toInt = (value: string | undefined, fallback: number): number => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const expandHomeDir = (value: string): string => {
+  if (value === "~") {
+    return homedir();
+  }
+
+  if (value.startsWith("~/")) {
+    return resolve(homedir(), value.slice(2));
+  }
+
+  return value;
+};
+
 export const config = {
   port: toInt(process.env.PORT, 3000),
   host: process.env.HOST ?? "0.0.0.0",
-  workspaceRoot: resolve(process.env.WORKSPACE_ROOT ?? process.cwd()),
+  workspaceRoot: resolveWorkspaceRoot(process.env.WORKSPACE_ROOT),
   commandTimeoutMs: toInt(process.env.COMMAND_TIMEOUT_MS, 10_000),
   commandOutputLimit: toInt(process.env.COMMAND_OUTPUT_LIMIT, 8_192),
   feishu: {
@@ -24,3 +38,9 @@ export const config = {
     eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket"
   }
 };
+
+function resolveWorkspaceRoot(value: string | undefined): string {
+  const fallback = process.cwd();
+  const candidate = resolve(expandHomeDir(value ?? fallback));
+  return existsSync(candidate) ? candidate : fallback;
+}
