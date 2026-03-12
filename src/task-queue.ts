@@ -11,6 +11,7 @@ type QueuedTask = InboundTask & {
   createdAt: string;
   updatedAt: string;
   error?: string;
+  resultPreview?: string;
 };
 
 const pendingTasks: QueuedTask[] = [];
@@ -75,6 +76,7 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
 
         task.state = "completed";
         task.updatedAt = nowIso();
+        task.resultPreview = replyText.slice(0, 200);
         rememberTask(task);
       } catch (error) {
         task.state = "failed";
@@ -101,6 +103,7 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
 export const enqueueInboundTask = (task: InboundTask, logger: FastifyBaseLogger): void => {
   const queuedTask: QueuedTask = {
     ...task,
+    kind: task.kind ?? (task.text.startsWith("/task ") ? "dev" : "chat"),
     state: "queued",
     createdAt: nowIso(),
     updatedAt: nowIso()

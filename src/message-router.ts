@@ -1,8 +1,10 @@
 import { FastifyBaseLogger } from "fastify";
 
+import { executeDevelopmentTask } from "./dev-task.js";
 import { handleAgentMessage, formatCommandReply } from "./agent/runtime.js";
 import { logIncomingMessage, logOutgoingMessage, logToolCall, MessageAuditContext } from "./audit.js";
 import { runCommand } from "./lib/command.js";
+import { listRecentTasks } from "./task-queue.js";
 
 export const processIncomingText = async ({
   text,
@@ -17,6 +19,26 @@ export const processIncomingText = async ({
 
   if (!text) {
     const replyText = "empty or unsupported message";
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text === "/status" || text === "/tasks") {
+    const replyText = listRecentTasks()
+      .slice(0, 10)
+      .map((task) => `${task.state} ${task.id} ${task.kind ?? "chat"} ${task.text.slice(0, 60)}`)
+      .join("\n") || "no recent tasks";
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text.startsWith("/task ")) {
+    const request = text.slice(6).trim();
+    const replyText = await executeDevelopmentTask({
+      request,
+      logger,
+      taskId: context.messageId ?? crypto.randomUUID()
+    });
     logOutgoingMessage(logger, context, replyText);
     return replyText;
   }

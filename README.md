@@ -101,6 +101,19 @@ LLM_CODEX_FULL_AUTO=true
 - `openai-codex` provider 当前不会自己直连 `chatgpt.com/backend-api/api/codex`
 - 它复用本机已登录的 `codex exec`，因此能吃到本地 ChatGPT/Codex 登录态
 
+## 飞书任务命令
+
+当前已经支持最小开发任务闭环：
+
+- `/run <command>`
+  - 直接执行受策略保护的命令
+- `/task <request>`
+  - 调用本机 `codex exec` 在当前仓库内执行开发任务
+  - 默认不自动提交 git commit
+  - 返回 Codex 总结和当前 `git status`
+- `/status`
+  - 返回最近任务的状态摘要
+
 ## 本地启动
 
 1. 安装依赖

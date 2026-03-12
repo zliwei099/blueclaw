@@ -1,13 +1,5 @@
-import { execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { promisify } from "node:util";
-
-import { config } from "../../config.js";
+import { runCodexExec } from "../../lib/codex.js";
 import { AssistantTurn, ChatMessage, ToolDefinition } from "../../types.js";
-
-const execFileAsync = promisify(execFile);
 
 const buildPrompt = (messages: ChatMessage[], tools: ToolDefinition[]): string => {
   const history = messages
@@ -53,45 +45,13 @@ export const generateOpenAiCodexTurn = async ({
   messages: ChatMessage[];
   tools: ToolDefinition[];
 }): Promise<AssistantTurn> => {
-  const tempDir = await mkdtemp(join(tmpdir(), "blueclaw-codex-"));
-  const outputPath = join(tempDir, "last-message.txt");
-  const promptText = buildPrompt(messages, tools);
-
   try {
-    const args = [
-      "exec",
-      "--skip-git-repo-check",
-      "--sandbox",
-      config.llm.codexSandbox,
-      "--output-last-message",
-      outputPath,
-      "--color",
-      "never",
-      "-C",
-      config.workspaceRoot
-    ];
-
-    if (config.llm.codexFullAuto) {
-      args.push("--full-auto");
-    }
-
-    if (config.llm.model) {
-      args.push("--model", config.llm.model);
-    }
-
-    args.push(promptText);
-
-    await execFileAsync(config.llm.codexBin, args, {
-      cwd: config.workspaceRoot,
-      timeout: 10 * 60 * 1000,
-      maxBuffer: 1024 * 1024
+    const result = await runCodexExec({
+      prompt: buildPrompt(messages, tools)
     });
 
-    await access(outputPath);
-    const output = (await readFile(outputPath, "utf8")).trim();
-
     return {
-      text: output || "Codex 没有返回有效内容。",
+      text: result.text || "Codex 没有返回有效内容。",
       toolCalls: []
     };
   } catch (error) {
@@ -110,7 +70,5 @@ export const generateOpenAiCodexTurn = async ({
         .filter(Boolean)
         .join(": ")
     );
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
   }
 };

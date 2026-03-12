@@ -70,6 +70,7 @@ export type FeishuEvent = {
 export type InboundTask = {
   id: string;
   source: "feishu-webhook" | "feishu-ws";
+  kind?: "chat" | "dev";
   messageId?: string;
   chatId?: string;
   userId?: string;
