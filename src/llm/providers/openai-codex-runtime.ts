@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { config } from "../../config.js";
@@ -143,4 +143,43 @@ export const loadRecentCodexRuntimeEvents = async (limit = 40): Promise<
   } catch {
     return [];
   }
+};
+
+export const clearCodexRuntimeState = async (sessionId: string): Promise<{ ok: boolean; sessionId: string }> => {
+  await rm(runtimePath(sessionId), { force: true });
+  await appendCodexRuntimeEvent({
+    sessionId,
+    type: "reset",
+    detail: "runtime state cleared"
+  }).catch(() => undefined);
+
+  return {
+    ok: true,
+    sessionId
+  };
+};
+
+export const formatCodexRuntimeOverview = async (): Promise<string> => {
+  const sessions = await listCodexRuntimeStates();
+  const events = await loadRecentCodexRuntimeEvents(12);
+
+  return [
+    "codex runtime sessions:",
+    sessions.length
+      ? sessions
+          .slice(0, 8)
+          .map(
+            (session) =>
+              `- ${session.sessionId} | turns=${session.turnCount} | last=${session.lastResponseType ?? "unknown"} | updated=${session.updatedAt}`
+          )
+          .join("\n")
+      : "(no runtime sessions)",
+    "",
+    "recent codex runtime events:",
+    events.length
+      ? events
+          .map((event) => `- ${event.at} | ${event.sessionId} | ${event.type} | ${event.detail}`)
+          .join("\n")
+      : "(no runtime events)"
+  ].join("\n");
 };

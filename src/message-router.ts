@@ -22,6 +22,8 @@ import {
   restartWithBuildGate,
   rollbackToLastStable
 } from "./release-control.js";
+import { loadCodexProfileSummary } from "./llm/providers/openai-codex-profile.js";
+import { formatCodexRuntimeOverview } from "./llm/providers/openai-codex-runtime.js";
 import { inspectSystemTarget } from "./system-inspect.js";
 import { listRecentTasks } from "./task-queue.js";
 
@@ -194,6 +196,15 @@ export const processIncomingText = async ({
     return replyText;
   }
 
+  if (routed.type === "provider") {
+    const replyText =
+      routed.target === "codex-profile"
+        ? naturalizeResult("这是当前 Codex provider 摘要。", formatCodexProfile(await loadCodexProfileSummary()))
+        : naturalizeResult("这是当前 Codex runtime 摘要。", await formatCodexRuntimeOverview());
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
   if (routed.type === "task") {
     const replyText = naturalizeResult("我已经按开发任务处理这条请求。", await executeDevelopmentTask({
       request: routed.request,
@@ -259,6 +270,29 @@ export const processIncomingText = async ({
 
 const naturalizeResult = (lead: string, detail: string): string =>
   [lead, "", detail].filter(Boolean).join("\n");
+
+const formatCodexProfile = (profile: {
+  ok: boolean;
+  authMode?: string;
+  hasApiKey?: boolean;
+  accountId?: string;
+  email?: string;
+  plan?: string;
+  lastRefresh?: string;
+  authPath: string;
+  error?: string;
+}): string =>
+  profile.ok
+    ? [
+        `authMode: ${profile.authMode ?? "unknown"}`,
+        `hasApiKey: ${profile.hasApiKey ? "yes" : "no"}`,
+        `accountId: ${profile.accountId ?? "unknown"}`,
+        `email: ${profile.email ?? "unknown"}`,
+        `plan: ${profile.plan ?? "unknown"}`,
+        `lastRefresh: ${profile.lastRefresh ?? "unknown"}`,
+        `authPath: ${profile.authPath}`
+      ].join("\n")
+    : `failed to load codex profile: ${profile.error ?? "unknown error"}`;
 
 const executeConfirmableAction = async ({
   action,

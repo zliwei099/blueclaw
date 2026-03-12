@@ -3,6 +3,7 @@ import { ConfirmableActionType, PendingWorkflowStep } from "./confirmation-store
 export type RoutedIntent =
   | { type: "builtin"; command: string }
   | { type: "inspect"; target: "service" | "disk" | "ports" }
+  | { type: "provider"; target: "codex-profile" | "codex-runtime" }
   | { type: "confirmable"; action: ConfirmableActionType; payload?: string; summary: string }
   | { type: "workflow"; summary: string; steps: PendingWorkflowStep[] }
   | { type: "task"; request: string }
@@ -97,6 +98,20 @@ export const routeNaturalIntent = (input: string): RoutedIntent => {
     includesAny(lower, ["listening ports", "open ports"])
   ) {
     return { type: "inspect", target: "ports" };
+  }
+
+  if (
+    includesAny(text, ["codex provider 状态", "codex 账户状态", "codex 配置状态", "看看 codex profile", "codex provider", "codex profile"]) ||
+    includesAny(lower, ["codex provider status", "codex profile"])
+  ) {
+    return { type: "provider", target: "codex-profile" };
+  }
+
+  if (
+    includesAny(text, ["codex runtime 状态", "看看 codex runtime", "codex 会话状态", "codex runtime"]) ||
+    includesAny(lower, ["codex runtime status", "codex runtime"])
+  ) {
+    return { type: "provider", target: "codex-runtime" };
   }
 
   const hasCommit = includesAny(text, COMMIT_PATTERNS) || includesAny(lower, COMMIT_PATTERNS);
