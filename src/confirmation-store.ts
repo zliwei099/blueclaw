@@ -1,18 +1,41 @@
-type PendingAction = {
-  action: "commit" | "push" | "restart" | "rollback";
-  payload?: string;
-  summary: string;
-  createdAt: number;
-};
+export type ConfirmableActionType = "commit" | "push" | "restart" | "rollback";
+
+export type PendingWorkflowStep =
+  | {
+      type: "task";
+      request: string;
+      summary: string;
+    }
+  | {
+      type: "action";
+      action: ConfirmableActionType;
+      payload?: string;
+      summary: string;
+    };
+
+export type PendingConfirmation =
+  | {
+      kind: "action";
+      action: ConfirmableActionType;
+      payload?: string;
+      summary: string;
+      createdAt: number;
+    }
+  | {
+      kind: "workflow";
+      summary: string;
+      steps: PendingWorkflowStep[];
+      createdAt: number;
+    };
 
 const TTL_MS = 5 * 60 * 1000;
-const pendingByConversation = new Map<string, PendingAction>();
+const pendingByConversation = new Map<string, PendingConfirmation>();
 
-export const setPendingConfirmation = (conversationId: string, pending: PendingAction): void => {
+export const setPendingConfirmation = (conversationId: string, pending: PendingConfirmation): void => {
   pendingByConversation.set(conversationId, pending);
 };
 
-export const getPendingConfirmation = (conversationId: string): PendingAction | undefined => {
+export const getPendingConfirmation = (conversationId: string): PendingConfirmation | undefined => {
   const value = pendingByConversation.get(conversationId);
   if (!value) {
     return undefined;

@@ -1,6 +1,13 @@
 import { FastifyBaseLogger } from "fastify";
 
-import { clearPendingConfirmation, getPendingConfirmation, isConfirmationText, setPendingConfirmation } from "./confirmation-store.js";
+import {
+  clearPendingConfirmation,
+  ConfirmableActionType,
+  getPendingConfirmation,
+  isConfirmationText,
+  PendingWorkflowStep,
+  setPendingConfirmation
+} from "./confirmation-store.js";
 import { executeDevelopmentTask } from "./dev-task.js";
 import { routeNaturalIntent } from "./intent-router.js";
 import { handleAgentMessage, formatCommandReply } from "./agent/runtime.js";
@@ -40,19 +47,18 @@ export const processIncomingText = async ({
       clearPendingConfirmation(conversationId);
 
       let replyText = "";
-      switch (pending.action) {
-        case "commit":
-          replyText = await createCommit({ message: pending.payload ?? "chore: update via blueclaw" });
-          break;
-        case "push":
-          replyText = await pushCurrentBranch();
-          break;
-        case "restart":
-          replyText = await restartWithBuildGate(logger);
-          break;
-        case "rollback":
-          replyText = await rollbackToLastStable();
-          break;
+      if (pending.kind === "workflow") {
+        replyText = await executeConfirmedWorkflow({
+          steps: pending.steps,
+          logger,
+          taskId: context.messageId ?? crypto.randomUUID()
+        });
+      } else {
+        replyText = await executeConfirmableAction({
+          action: pending.action,
+          payload: pending.payload,
+          logger
+        });
       }
 
       logOutgoingMessage(logger, context, replyText);
@@ -169,6 +175,7 @@ export const processIncomingText = async ({
 
   if (routed.type === "confirmable") {
     setPendingConfirmation(conversationId, {
+      kind: "action",
       action: routed.action,
       payload: routed.payload,
       summary: routed.summary,
@@ -178,6 +185,24 @@ export const processIncomingText = async ({
     const replyText = [
       `我理解你要执行的是：${routed.summary}。`,
       "这是高风险动作。若继续，请直接回复“确认”。"
+    ].join("\n");
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (routed.type === "workflow") {
+    setPendingConfirmation(conversationId, {
+      kind: "workflow",
+      summary: routed.summary,
+      steps: routed.steps,
+      createdAt: Date.now()
+    });
+
+    const replyText = [
+      "我把这条请求拆成了一个执行计划：",
+      routed.summary,
+      "",
+      "这包含代码修改或高风险动作。若继续，请直接回复“确认”。"
     ].join("\n");
     logOutgoingMessage(logger, context, replyText);
     return replyText;
@@ -194,3 +219,57 @@ export const processIncomingText = async ({
 
 const naturalizeResult = (lead: string, detail: string): string =>
   [lead, "", detail].filter(Boolean).join("\n");
+
+const executeConfirmableAction = async ({
+  action,
+  payload,
+  logger
+}: {
+  action: ConfirmableActionType;
+  payload?: string;
+  logger: FastifyBaseLogger;
+}): Promise<string> => {
+  switch (action) {
+    case "commit":
+      return createCommit({ message: payload ?? "chore: update via blueclaw" });
+    case "push":
+      return pushCurrentBranch();
+    case "restart":
+      return restartWithBuildGate(logger);
+    case "rollback":
+      return rollbackToLastStable();
+  }
+};
+
+const executeConfirmedWorkflow = async ({
+  steps,
+  logger,
+  taskId
+}: {
+  steps: PendingWorkflowStep[];
+  logger: FastifyBaseLogger;
+  taskId: string;
+}): Promise<string> => {
+  const results: string[] = [];
+
+  for (const [index, step] of steps.entries()) {
+    if (step.type === "task") {
+      const result = await executeDevelopmentTask({
+        request: step.request,
+        logger,
+        taskId: `${taskId}-${index + 1}`
+      });
+      results.push([`步骤 ${index + 1}: ${step.summary}`, result].join("\n"));
+      continue;
+    }
+
+    const result = await executeConfirmableAction({
+      action: step.action,
+      payload: step.payload,
+      logger
+    });
+    results.push([`步骤 ${index + 1}: ${step.summary}`, result].join("\n"));
+  }
+
+  return ["执行计划已完成。", "", ...results].join("\n\n");
+};
