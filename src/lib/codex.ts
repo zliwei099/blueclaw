@@ -10,9 +10,11 @@ const execFileAsync = promisify(execFile);
 
 export const runCodexExec = async ({
   prompt,
+  cwd = config.projectRoot,
   timeoutMs = 10 * 60 * 1000
 }: {
   prompt: string;
+  cwd?: string;
   timeoutMs?: number;
 }): Promise<{ text: string; stdout: string; stderr: string }> => {
   const tempDir = await mkdtemp(join(tmpdir(), "blueclaw-codex-"));
@@ -29,7 +31,7 @@ export const runCodexExec = async ({
       "--color",
       "never",
       "-C",
-      config.projectRoot
+      cwd
     ];
 
     if (config.llm.codexFullAuto) {
@@ -43,7 +45,7 @@ export const runCodexExec = async ({
     args.push(prompt);
 
     const { stdout, stderr } = await execFileAsync(config.llm.codexBin, args, {
-      cwd: config.projectRoot,
+      cwd,
       timeout: timeoutMs,
       maxBuffer: 1024 * 1024
     });

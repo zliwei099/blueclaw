@@ -2,6 +2,7 @@ import { ConfirmableActionType, PendingWorkflowStep } from "./confirmation-store
 
 export type RoutedIntent =
   | { type: "builtin"; command: string }
+  | { type: "inspect"; target: "service" | "disk" | "ports" }
   | { type: "confirmable"; action: ConfirmableActionType; payload?: string; summary: string }
   | { type: "workflow"; summary: string; steps: PendingWorkflowStep[] }
   | { type: "task"; request: string }
@@ -75,6 +76,27 @@ export const routeNaturalIntent = (input: string): RoutedIntent => {
     includesAny(lower, ["status", "recent tasks"])
   ) {
     return { type: "builtin", command: "/status" };
+  }
+
+  if (
+    includesAny(text, ["看看服务状态", "检查服务状态", "运行状态", "环境状态"]) ||
+    includesAny(lower, ["service status", "runtime status"])
+  ) {
+    return { type: "inspect", target: "service" };
+  }
+
+  if (
+    includesAny(text, ["看看磁盘", "磁盘情况", "磁盘状态", "硬盘空间"]) ||
+    includesAny(lower, ["disk status", "disk usage"])
+  ) {
+    return { type: "inspect", target: "disk" };
+  }
+
+  if (
+    includesAny(text, ["看看端口", "监听端口", "端口情况"]) ||
+    includesAny(lower, ["listening ports", "open ports"])
+  ) {
+    return { type: "inspect", target: "ports" };
   }
 
   const hasCommit = includesAny(text, COMMIT_PATTERNS) || includesAny(lower, COMMIT_PATTERNS);

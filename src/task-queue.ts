@@ -55,6 +55,28 @@ const schedulePersist = (): void => {
   });
 };
 
+const emitProgressReply = async ({
+  task,
+  message,
+  logger
+}: {
+  task: TaskRecord;
+  message: string;
+  logger: FastifyBaseLogger;
+}): Promise<void> => {
+  const delivery = await sendFeishuReply({
+    messageId: task.messageId,
+    text: `进度更新\n${message}`
+  }).catch((error: unknown) => ({
+    sent: false,
+    reason: error instanceof Error ? error.message : "unknown progress delivery error"
+  }));
+
+  if (!delivery.sent) {
+    logger.warn({ taskId: task.id, delivery }, "task progress reply skipped");
+  }
+};
+
 const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
   if (workerRunning) {
     return;
@@ -102,6 +124,13 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
             messageId: task.messageId,
             chatId: task.chatId,
             userId: task.userId
+          },
+          onProgress: async (message) => {
+            task.resultPreview = `progress: ${message}`.slice(0, 200);
+            task.updatedAt = nowIso();
+            rememberTask(task);
+            schedulePersist();
+            await emitProgressReply({ task, message, logger });
           }
         });
 

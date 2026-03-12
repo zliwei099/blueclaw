@@ -20,16 +20,19 @@ import {
   restartWithBuildGate,
   rollbackToLastStable
 } from "./release-control.js";
+import { inspectSystemTarget } from "./system-inspect.js";
 import { listRecentTasks } from "./task-queue.js";
 
 export const processIncomingText = async ({
   text,
   logger,
-  context
+  context,
+  onProgress
 }: {
   text: string;
   logger: FastifyBaseLogger;
   context: MessageAuditContext;
+  onProgress?: (message: string) => Promise<void>;
 }): Promise<string> => {
   logIncomingMessage(logger, context, text);
 
@@ -51,7 +54,8 @@ export const processIncomingText = async ({
         replyText = await executeConfirmedWorkflow({
           steps: pending.steps,
           logger,
-          taskId: context.messageId ?? crypto.randomUUID()
+          taskId: context.messageId ?? crypto.randomUUID(),
+          onProgress
         });
       } else {
         replyText = await executeConfirmableAction({
@@ -120,7 +124,8 @@ export const processIncomingText = async ({
     const replyText = naturalizeResult("开发任务已经执行完成。", await executeDevelopmentTask({
       request,
       logger,
-      taskId: context.messageId ?? crypto.randomUUID()
+      taskId: context.messageId ?? crypto.randomUUID(),
+      onProgress
     }));
     logOutgoingMessage(logger, context, replyText);
     return replyText;
@@ -159,15 +164,23 @@ export const processIncomingText = async ({
     return processIncomingText({
       text: routed.command,
       logger,
-      context
+      context,
+      onProgress
     });
+  }
+
+  if (routed.type === "inspect") {
+    const replyText = naturalizeResult("这是当前系统巡检结果。", await inspectSystemTarget(routed.target));
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
   }
 
   if (routed.type === "task") {
     const replyText = naturalizeResult("我已经按开发任务处理这条请求。", await executeDevelopmentTask({
       request: routed.request,
       logger,
-      taskId: context.messageId ?? crypto.randomUUID()
+      taskId: context.messageId ?? crypto.randomUUID(),
+      onProgress
     }));
     logOutgoingMessage(logger, context, replyText);
     return replyText;
@@ -244,20 +257,25 @@ const executeConfirmableAction = async ({
 const executeConfirmedWorkflow = async ({
   steps,
   logger,
-  taskId
+  taskId,
+  onProgress
 }: {
   steps: PendingWorkflowStep[];
   logger: FastifyBaseLogger;
   taskId: string;
+  onProgress?: (message: string) => Promise<void>;
 }): Promise<string> => {
   const results: string[] = [];
 
   for (const [index, step] of steps.entries()) {
+    await onProgress?.(`执行计划步骤 ${index + 1}/${steps.length}: ${step.summary}`);
+
     if (step.type === "task") {
       const result = await executeDevelopmentTask({
         request: step.request,
         logger,
-        taskId: `${taskId}-${index + 1}`
+        taskId: `${taskId}-${index + 1}`,
+        onProgress
       });
       results.push([`步骤 ${index + 1}: ${step.summary}`, result].join("\n"));
       continue;

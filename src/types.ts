@@ -87,3 +87,5 @@ export type TaskRecord = InboundTask & {
   resultPreview?: string;
   branch?: string;
 };
+
+export type TaskProgressReporter = (message: string) => Promise<void>;
