@@ -31,7 +31,7 @@
 - 如果 `WORKSPACE_ROOT` 不存在，会自动回退到当前项目目录
 - 如果设置 `FEISHU_EVENT_MODE=webhook`，则只使用 webhook 模式
 - 如果设置 `FEISHU_EVENT_MODE=both`，则同时保留 webhook 和 websocket
-- 如果配置了 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`，自然语言消息会进入 LLM Agent 模式
+- 如果配置了 `LLM_PROVIDER=openai-compatible` 以及对应的 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`，自然语言消息会进入 LLM Agent 模式
 - 如果未配置 LLM，则自然语言消息仍走规则兜底
 
 ## 飞书通信方式
@@ -78,18 +78,24 @@
 需要配置：
 
 ```env
-LLM_BASE_URL=
-LLM_API_KEY=
-LLM_MODEL=
+LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=你的_openai_api_key
+LLM_MODEL=gpt-5.4
 LLM_MAX_STEPS=4
 SESSION_STORE_DIR=.blueclaw/sessions
 ```
 
 说明：
 
+- `LLM_PROVIDER` 当前支持：
+  - `openai-compatible`
+  - `openai-codex`（已预留入口，尚未接入）
 - `LLM_BASE_URL` 应指向 OpenAI 兼容接口前缀，当前代码会拼接 `/chat/completions`
 - `LLM_MODEL` 由你选择的模型提供方决定
 - `LLM_MAX_STEPS` 控制单轮最多工具调用回合数
+- 当前机器上的 Codex 本地配置默认模型是 `gpt-5.4`
+- 当前机器上的 Codex 登录模式是 `chatgpt`，没有可直接复用的 `OPENAI_API_KEY`
 
 ## 本地启动
 

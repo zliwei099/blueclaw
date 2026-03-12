@@ -33,6 +33,11 @@ export type ToolCallRequest = {
   argumentsText: string;
 };
 
+export type AssistantTurn = {
+  text: string;
+  toolCalls: ToolCallRequest[];
+};
+
 export type FeishuEvent = {
   schema?: string;
   header?: {

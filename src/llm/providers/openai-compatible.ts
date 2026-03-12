@@ -1,5 +1,5 @@
-import { config } from "../config.js";
-import { ChatMessage, ToolCallRequest, ToolDefinition } from "../types.js";
+import { config } from "../../config.js";
+import { AssistantTurn, ChatMessage, ToolDefinition } from "../../types.js";
 
 type OpenAIChatCompletionResponse = {
   choices?: Array<{
@@ -17,18 +17,18 @@ type OpenAIChatCompletionResponse = {
   }>;
 };
 
-export const isLlmConfigured = (): boolean =>
+export const isOpenAiCompatibleConfigured = (): boolean =>
   Boolean(config.llm.baseUrl && config.llm.apiKey && config.llm.model);
 
-export const generateAssistantTurn = async ({
+export const generateOpenAiCompatibleTurn = async ({
   messages,
   tools
 }: {
   messages: ChatMessage[];
   tools: ToolDefinition[];
-}): Promise<{ text: string; toolCalls: ToolCallRequest[] }> => {
-  if (!isLlmConfigured()) {
-    throw new Error("llm is not configured");
+}): Promise<AssistantTurn> => {
+  if (!isOpenAiCompatibleConfigured()) {
+    throw new Error("openai-compatible llm is not configured");
   }
 
   const response = await fetch(`${config.llm.baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -88,7 +88,7 @@ export const generateAssistantTurn = async ({
   }
 
   const message = payload.choices?.[0]?.message;
-  const toolCalls: ToolCallRequest[] = (message?.tool_calls ?? [])
+  const toolCalls = (message?.tool_calls ?? [])
     .filter((toolCall) => toolCall.type === "function" && toolCall.function?.name)
     .map((toolCall) => ({
       id: toolCall.id ?? crypto.randomUUID(),

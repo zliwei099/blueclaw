@@ -39,6 +39,7 @@ export const config = {
     eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket"
   },
   llm: {
+    provider: process.env.LLM_PROVIDER ?? "openai-compatible",
     baseUrl: process.env.LLM_BASE_URL ?? "",
     apiKey: process.env.LLM_API_KEY ?? "",
     model: process.env.LLM_MODEL ?? "",

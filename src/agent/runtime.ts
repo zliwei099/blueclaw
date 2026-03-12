@@ -1,10 +1,10 @@
 import { FastifyBaseLogger } from "fastify";
 
 import { config } from "../config.js";
+import { getLlmUnavailableReason, generateAssistantTurn, isLlmConfigured } from "../llm/provider.js";
 import { loadSessionMessages, saveSessionMessages } from "../storage/session-store.js";
 import { executeTool, toolDefinitions } from "../tools/registry.js";
 import { ChatMessage } from "../types.js";
-import { generateAssistantTurn, isLlmConfigured } from "../llm/openai-compatible.js";
 
 const NATURAL_LANGUAGE_HINTS = [
   { pattern: /当前目录|pwd|在哪里/i, command: "pwd" },
@@ -104,10 +104,7 @@ export const handleAgentMessage = async ({
 const handleHintFallback = async (input: string): Promise<string> => {
   const hint = NATURAL_LANGUAGE_HINTS.find((item) => item.pattern.test(input));
   if (!hint) {
-    return [
-      "LLM 还没有配置完成。",
-      "可先直接发送 `/run <command>`，或配置 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL` 后使用自然语言 Agent。"
-    ].join("\n");
+    return getLlmUnavailableReason();
   }
 
   const { runCommand } = await import("../lib/command.js");
