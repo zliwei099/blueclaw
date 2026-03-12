@@ -12,6 +12,14 @@ type FeishuMessageResponse = {
   msg: string;
 };
 
+type FeishuReactionResponse = {
+  code: number;
+  msg: string;
+  data?: {
+    reaction_id?: string;
+  };
+};
+
 let cachedToken:
   | {
       value: string;
@@ -74,8 +82,46 @@ export const sendFeishuReply = async ({
     return { sent: false, reason: "feishu credentials are not configured" };
   }
 
+  const response = await fetch(`https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reply`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${tenantAccessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      msg_type: "text",
+      content: JSON.stringify({
+        text
+      })
+    })
+  });
+
+  const payload = (await response.json()) as FeishuMessageResponse;
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(`failed to send feishu reply: ${payload.msg}`);
+  }
+
+  return { sent: true };
+};
+
+export const addFeishuReaction = async ({
+  messageId,
+  emojiType
+}: {
+  messageId?: string;
+  emojiType: string;
+}): Promise<{ sent: boolean; reactionId?: string; reason?: string }> => {
+  if (!messageId) {
+    return { sent: false, reason: "message id is missing" };
+  }
+
+  const tenantAccessToken = await getTenantAccessToken();
+  if (!tenantAccessToken) {
+    return { sent: false, reason: "feishu credentials are not configured" };
+  }
+
   const response = await fetch(
-    `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reply`,
+    `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reactions`,
     {
       method: "POST",
       headers: {
@@ -83,17 +129,54 @@ export const sendFeishuReply = async ({
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        msg_type: "text",
-        content: JSON.stringify({
-          text
-        })
+        reaction_type: {
+          emoji_type: emojiType
+        }
       })
     }
   );
 
-  const payload = (await response.json()) as FeishuMessageResponse;
+  const payload = (await response.json()) as FeishuReactionResponse;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(`failed to send feishu reply: ${payload.msg}`);
+    throw new Error(`failed to add feishu reaction: ${payload.msg}`);
+  }
+
+  return { sent: true, reactionId: payload.data?.reaction_id };
+};
+
+export const removeFeishuReaction = async ({
+  messageId,
+  reactionId
+}: {
+  messageId?: string;
+  reactionId?: string;
+}): Promise<{ sent: boolean; reason?: string }> => {
+  if (!messageId) {
+    return { sent: false, reason: "message id is missing" };
+  }
+
+  if (!reactionId) {
+    return { sent: false, reason: "reaction id is missing" };
+  }
+
+  const tenantAccessToken = await getTenantAccessToken();
+  if (!tenantAccessToken) {
+    return { sent: false, reason: "feishu credentials are not configured" };
+  }
+
+  const response = await fetch(
+    `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reactions/${reactionId}`,
+    {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${tenantAccessToken}`
+      }
+    }
+  );
+
+  const payload = (await response.json()) as FeishuReactionResponse;
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(`failed to remove feishu reaction: ${payload.msg}`);
   }
 
   return { sent: true };

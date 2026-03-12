@@ -45,6 +45,7 @@ export const executeDevelopmentTask = async ({
 
   return [
     `task: ${request}`,
+    `projectRoot: ${process.cwd()}`,
     "",
     codexResult.text.trim(),
     "",

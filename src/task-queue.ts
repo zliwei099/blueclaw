@@ -1,6 +1,7 @@
 import { FastifyBaseLogger } from "fastify";
 
-import { sendFeishuReply } from "./adapters/feishu-client.js";
+import { addFeishuReaction, removeFeishuReaction, sendFeishuReply } from "./adapters/feishu-client.js";
+import { config } from "./config.js";
 import { processIncomingText } from "./message-router.js";
 import { InboundTask } from "./types.js";
 
@@ -53,7 +54,25 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
       task.updatedAt = nowIso();
       rememberTask(task);
 
+      let processingReactionId: string | undefined;
+
       try {
+        if (config.feishu.processingEmojiType) {
+          const reaction = await addFeishuReaction({
+            messageId: task.messageId,
+            emojiType: config.feishu.processingEmojiType
+          }).catch((error: unknown) => ({
+            sent: false,
+            reason: error instanceof Error ? error.message : "unknown reaction error"
+          }));
+
+          if (!reaction.sent) {
+            logger.warn({ taskId: task.id, reaction }, "task processing reaction skipped");
+          } else {
+            processingReactionId = "reactionId" in reaction ? reaction.reactionId : undefined;
+          }
+        }
+
         const replyText = await processIncomingText({
           text: task.text,
           logger,
@@ -93,6 +112,18 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
           },
           "task execution failed"
         );
+      } finally {
+        const reactionRemoval = await removeFeishuReaction({
+          messageId: task.messageId,
+          reactionId: processingReactionId
+        }).catch((error: unknown) => ({
+          sent: false,
+          reason: error instanceof Error ? error.message : "unknown reaction cleanup error"
+        }));
+
+        if (!reactionRemoval.sent && processingReactionId) {
+          logger.warn({ taskId: task.id, reactionRemoval }, "task processing reaction cleanup failed");
+        }
       }
     }
   } finally {

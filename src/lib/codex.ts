@@ -29,7 +29,7 @@ export const runCodexExec = async ({
       "--color",
       "never",
       "-C",
-      config.workspaceRoot
+      config.projectRoot
     ];
 
     if (config.llm.codexFullAuto) {
@@ -43,7 +43,7 @@ export const runCodexExec = async ({
     args.push(prompt);
 
     const { stdout, stderr } = await execFileAsync(config.llm.codexBin, args, {
-      cwd: config.workspaceRoot,
+      cwd: config.projectRoot,
       timeout: timeoutMs,
       maxBuffer: 1024 * 1024
     });

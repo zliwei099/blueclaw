@@ -4,6 +4,7 @@ import { executeDevelopmentTask } from "./dev-task.js";
 import { handleAgentMessage, formatCommandReply } from "./agent/runtime.js";
 import { logIncomingMessage, logOutgoingMessage, logToolCall, MessageAuditContext } from "./audit.js";
 import { runCommand } from "./lib/command.js";
+import { createCommit, getDiffSummary, restartWithBuildGate, rollbackToLastStable } from "./release-control.js";
 import { listRecentTasks } from "./task-queue.js";
 
 export const processIncomingText = async ({
@@ -19,6 +20,31 @@ export const processIncomingText = async ({
 
   if (!text) {
     const replyText = "empty or unsupported message";
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text === "/diff") {
+    const replyText = await getDiffSummary();
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text.startsWith("/commit ")) {
+    const message = text.slice(8).trim();
+    const replyText = await createCommit({ message });
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text === "/rollback") {
+    const replyText = await rollbackToLastStable();
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
+  if (text === "/restart" || text === "重启服务" || text === "重启下服务") {
+    const replyText = await restartWithBuildGate(logger);
     logOutgoingMessage(logger, context, replyText);
     return replyText;
   }

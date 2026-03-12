@@ -26,6 +26,7 @@ const expandHomeDir = (value: string): string => {
 export const config = {
   port: toInt(process.env.PORT, 3000),
   host: process.env.HOST ?? "127.0.0.1",
+  projectRoot: process.cwd(),
   workspaceRoot: resolveWorkspaceRoot(process.env.WORKSPACE_ROOT),
   commandTimeoutMs: toInt(process.env.COMMAND_TIMEOUT_MS, 10_000),
   commandOutputLimit: toInt(process.env.COMMAND_OUTPUT_LIMIT, 8_192),
@@ -36,7 +37,8 @@ export const config = {
     verificationToken: process.env.FEISHU_VERIFICATION_TOKEN ?? "",
     encryptKey: process.env.FEISHU_ENCRYPT_KEY ?? "",
     botName: process.env.FEISHU_BOT_NAME ?? "blueclaw",
-    eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket"
+    eventMode: process.env.FEISHU_EVENT_MODE ?? "websocket",
+    processingEmojiType: process.env.FEISHU_PROCESSING_EMOJI_TYPE ?? ""
   },
   llm: {
     provider: process.env.LLM_PROVIDER ?? "openai-compatible",
@@ -53,5 +55,17 @@ export const config = {
 function resolveWorkspaceRoot(value: string | undefined): string {
   const fallback = process.cwd();
   const candidate = resolve(expandHomeDir(value ?? fallback));
-  return existsSync(candidate) ? candidate : fallback;
+  if (!existsSync(candidate)) {
+    return fallback;
+  }
+
+  if (existsSync(resolve(candidate, ".git"))) {
+    return candidate;
+  }
+
+  if (existsSync(resolve(fallback, ".git"))) {
+    return fallback;
+  }
+
+  return candidate;
 }
