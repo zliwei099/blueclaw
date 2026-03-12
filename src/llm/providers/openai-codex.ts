@@ -7,8 +7,10 @@ import {
 } from "./openai-codex-runtime.js";
 
 type CodexProtocolResponse = {
-  type: "final" | "tool_calls";
+  type: "final" | "tool_calls" | "progress" | "need_confirmation" | "cancelled";
   text?: string;
+  progress?: string[];
+  summary?: string;
   tool_calls?: Array<{
     id?: string;
     name?: string;
@@ -55,6 +57,9 @@ const buildPrompt = ({
     "Your job is to decide either:",
     '1. Return a final answer as JSON: {"type":"final","text":"..."}',
     '2. Return tool calls as JSON: {"type":"tool_calls","tool_calls":[{"id":"call-1","name":"tool.name","arguments":{...}}]}',
+    '3. Return progress as JSON: {"type":"progress","progress":["..."],"text":"optional status"}',
+    '4. Ask for confirmation as JSON: {"type":"need_confirmation","summary":"...","text":"optional explanation"}',
+    '5. Cancel as JSON: {"type":"cancelled","text":"..."}',
     "Important constraints:",
     "- Output JSON only. No markdown, no code fence, no prose before or after JSON.",
     "- If machine-specific or repository-specific facts are needed, prefer requesting blueclaw tools instead of using your own internal tooling.",
@@ -98,7 +103,13 @@ const extractJsonBlock = (text: string): string => {
 
 const parseCodexProtocolResponse = (text: string): CodexProtocolResponse => {
   const payload = JSON.parse(extractJsonBlock(text)) as CodexProtocolResponse;
-  if (payload.type !== "final" && payload.type !== "tool_calls") {
+  if (
+    payload.type !== "final" &&
+    payload.type !== "tool_calls" &&
+    payload.type !== "progress" &&
+    payload.type !== "need_confirmation" &&
+    payload.type !== "cancelled"
+  ) {
     throw new Error("codex returned an unsupported protocol type");
   }
 
@@ -129,6 +140,62 @@ export const generateOpenAiCodexTurn = async ({
 
     const payload = parseCodexProtocolResponse(result.text);
     const latestUserInput = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+
+    if (payload.type === "progress") {
+      await saveCodexRuntimeState({
+        ...runtimeState,
+        sessionId: effectiveSessionId,
+        turnCount: runtimeState.turnCount + 1,
+        recentUserInputs: [...runtimeState.recentUserInputs, latestUserInput],
+        recentToolNames: runtimeState.recentToolNames,
+        lastResponseType: "final",
+        lastResponsePreview: (payload.progress ?? []).join(" | ").slice(0, 160)
+      });
+
+      return {
+        text: payload.text ?? "",
+        toolCalls: [],
+        progress: payload.progress ?? []
+      };
+    }
+
+    if (payload.type === "need_confirmation") {
+      await saveCodexRuntimeState({
+        ...runtimeState,
+        sessionId: effectiveSessionId,
+        turnCount: runtimeState.turnCount + 1,
+        recentUserInputs: [...runtimeState.recentUserInputs, latestUserInput],
+        recentToolNames: runtimeState.recentToolNames,
+        lastResponseType: "final",
+        lastResponsePreview: (payload.summary ?? payload.text ?? "").slice(0, 160)
+      });
+
+      return {
+        text: payload.text ?? "",
+        toolCalls: [],
+        needsConfirmation: {
+          summary: payload.summary ?? payload.text ?? "需要确认后再继续"
+        }
+      };
+    }
+
+    if (payload.type === "cancelled") {
+      await saveCodexRuntimeState({
+        ...runtimeState,
+        sessionId: effectiveSessionId,
+        turnCount: runtimeState.turnCount + 1,
+        recentUserInputs: [...runtimeState.recentUserInputs, latestUserInput],
+        recentToolNames: runtimeState.recentToolNames,
+        lastResponseType: "final",
+        lastResponsePreview: (payload.text ?? "cancelled").slice(0, 160)
+      });
+
+      return {
+        text: payload.text ?? "任务已取消。",
+        toolCalls: [],
+        cancelled: true
+      };
+    }
 
     if (payload.type === "tool_calls") {
       const toolCalls = (payload.tool_calls ?? [])

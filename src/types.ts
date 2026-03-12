@@ -36,6 +36,11 @@ export type ToolCallRequest = {
 export type AssistantTurn = {
   text: string;
   toolCalls: ToolCallRequest[];
+  progress?: string[];
+  needsConfirmation?: {
+    summary: string;
+  };
+  cancelled?: boolean;
 };
 
 export type FeishuEvent = {

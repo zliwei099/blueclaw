@@ -33,11 +33,13 @@ const SYSTEM_PROMPT = [
 export const handleAgentMessage = async ({
   input,
   sessionId,
-  logger
+  logger,
+  onProgress
 }: {
   input: string;
   sessionId: string;
   logger: FastifyBaseLogger;
+  onProgress?: (message: string) => Promise<void>;
 }): Promise<string> => {
   if (!isLlmConfigured()) {
     return handleHintFallback(input);
@@ -88,7 +90,31 @@ export const handleAgentMessage = async ({
         sessionId
       });
 
+      for (const progressMessage of turn.progress ?? []) {
+        await onProgress?.(progressMessage);
+      }
+
       if (turn.toolCalls.length === 0) {
+        if (turn.needsConfirmation) {
+          const reply = [turn.text || "执行前需要确认。", `确认事项：${turn.needsConfirmation.summary}`]
+            .filter(Boolean)
+            .join("\n");
+          await saveSessionState(sessionId, {
+            messages: [...sessionMessages, { role: "user", content: input }, { role: "assistant", content: reply }],
+            memory: nextMemory
+          });
+          return reply;
+        }
+
+        if (turn.cancelled) {
+          const reply = turn.text || "任务已取消。";
+          await saveSessionState(sessionId, {
+            messages: [...sessionMessages, { role: "user", content: input }, { role: "assistant", content: reply }],
+            memory: nextMemory
+          });
+          return reply;
+        }
+
         const reply = turn.text || "我没有得到有效结果。";
         await saveSessionState(sessionId, {
           messages: [...sessionMessages, { role: "user", content: input }, { role: "assistant", content: reply }],

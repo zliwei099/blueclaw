@@ -224,7 +224,8 @@ export const processIncomingText = async ({
   const replyText = await handleAgentMessage({
     input: text,
     sessionId: conversationId,
-    logger
+    logger,
+    onProgress
   });
   logOutgoingMessage(logger, context, replyText);
   return replyText;
