@@ -23,14 +23,16 @@ export const isLlmConfigured = (): boolean => {
 
 export const generateAssistantTurn = async ({
   messages,
-  tools
+  tools,
+  sessionId
 }: {
   messages: ChatMessage[];
   tools: ToolDefinition[];
+  sessionId?: string;
 }): Promise<AssistantTurn> => {
   switch (config.llm.provider as ProviderName) {
     case "openai-codex":
-      return generateOpenAiCodexTurn({ messages, tools });
+      return generateOpenAiCodexTurn({ messages, tools, sessionId });
     case "openai-compatible":
     default:
       return generateOpenAiCompatibleTurn({ messages, tools });
@@ -40,7 +42,7 @@ export const generateAssistantTurn = async ({
 export const getLlmUnavailableReason = (): string => {
   switch (config.llm.provider as ProviderName) {
     case "openai-codex":
-      return "当前 provider=openai-codex，但这个 provider 还未实现。可先切回 openai-compatible，或继续让我补上 codex OAuth 接入。";
+      return "当前 provider=openai-codex，但本机 Codex CLI 无法使用。请先确认本机 Codex 已登录且命令可执行。";
     case "openai-compatible":
     default:
       return "LLM 还没有配置完成。可先直接发送 `/run <command>`，或配置 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL` 后使用自然语言 Agent。";

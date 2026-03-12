@@ -84,7 +84,8 @@ export const handleAgentMessage = async ({
     for (let step = 0; step < config.llm.maxSteps; step += 1) {
       const turn = await generateAssistantTurn({
         messages,
-        tools: toolDefinitions
+        tools: toolDefinitions,
+        sessionId
       });
 
       if (turn.toolCalls.length === 0) {
