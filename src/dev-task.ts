@@ -25,6 +25,15 @@ const summarizeGitStatus = async (): Promise<string> => {
   return status.result.stdout.trim() || "working tree clean";
 };
 
+export const getCurrentBranch = async (): Promise<string> => {
+  const branch = await runCommand("git branch --show-current");
+  if (!branch.ok) {
+    return "unknown";
+  }
+
+  return branch.result.stdout.trim() || "detached";
+};
+
 export const executeDevelopmentTask = async ({
   request,
   logger,
@@ -42,10 +51,12 @@ export const executeDevelopmentTask = async ({
   });
 
   const gitSummary = await summarizeGitStatus();
+  const branch = await getCurrentBranch();
 
   return [
     `task: ${request}`,
     `projectRoot: ${process.cwd()}`,
+    `branch: ${branch}`,
     "",
     codexResult.text.trim(),
     "",

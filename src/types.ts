@@ -76,3 +76,14 @@ export type InboundTask = {
   userId?: string;
   text: string;
 };
+
+export type TaskState = "queued" | "running" | "completed" | "failed";
+
+export type TaskRecord = InboundTask & {
+  state: TaskState;
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+  resultPreview?: string;
+  branch?: string;
+};

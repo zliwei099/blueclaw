@@ -2,26 +2,20 @@ import { FastifyBaseLogger } from "fastify";
 
 import { addFeishuReaction, removeFeishuReaction, sendFeishuReply } from "./adapters/feishu-client.js";
 import { config } from "./config.js";
+import { getCurrentBranch } from "./dev-task.js";
 import { processIncomingText } from "./message-router.js";
-import { InboundTask } from "./types.js";
+import { InboundTask, TaskRecord } from "./types.js";
+import { loadTaskRecords, saveTaskRecords } from "./task-store.js";
 
-type TaskState = "queued" | "running" | "completed" | "failed";
-
-type QueuedTask = InboundTask & {
-  state: TaskState;
-  createdAt: string;
-  updatedAt: string;
-  error?: string;
-  resultPreview?: string;
-};
-
-const pendingTasks: QueuedTask[] = [];
-const recentTasks = new Map<string, QueuedTask>();
+const pendingTasks: TaskRecord[] = [];
+const recentTasks = new Map<string, TaskRecord>();
 const MAX_RECENT_TASKS = 200;
 let workerStarted = false;
 let workerRunning = false;
+let storeLoaded = false;
+let persistPromise: Promise<void> | null = null;
 
-const rememberTask = (task: QueuedTask): void => {
+const rememberTask = (task: TaskRecord): void => {
   recentTasks.set(task.id, { ...task });
 
   if (recentTasks.size <= MAX_RECENT_TASKS) {
@@ -35,6 +29,31 @@ const rememberTask = (task: QueuedTask): void => {
 };
 
 const nowIso = (): string => new Date().toISOString();
+
+const ensureStoreLoaded = async (): Promise<void> => {
+  if (storeLoaded) {
+    return;
+  }
+
+  storeLoaded = true;
+  const tasks = await loadTaskRecords();
+  for (const task of tasks) {
+    recentTasks.set(task.id, task);
+  }
+};
+
+const persistTasks = async (): Promise<void> => {
+  await ensureStoreLoaded();
+  await saveTaskRecords(
+    [...recentTasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, MAX_RECENT_TASKS)
+  );
+};
+
+const schedulePersist = (): void => {
+  persistPromise ??= persistTasks().finally(() => {
+    persistPromise = null;
+  });
+};
 
 const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
   if (workerRunning) {
@@ -52,7 +71,9 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
 
       task.state = "running";
       task.updatedAt = nowIso();
+      task.branch = await getCurrentBranch().catch(() => task.branch);
       rememberTask(task);
+      schedulePersist();
 
       let processingReactionId: string | undefined;
 
@@ -97,11 +118,13 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
         task.updatedAt = nowIso();
         task.resultPreview = replyText.slice(0, 200);
         rememberTask(task);
+        schedulePersist();
       } catch (error) {
         task.state = "failed";
         task.updatedAt = nowIso();
         task.error = error instanceof Error ? error.message : "unknown task error";
         rememberTask(task);
+        schedulePersist();
 
         logger.error(
           {
@@ -132,7 +155,7 @@ const runWorker = async (logger: FastifyBaseLogger): Promise<void> => {
 };
 
 export const enqueueInboundTask = (task: InboundTask, logger: FastifyBaseLogger): void => {
-  const queuedTask: QueuedTask = {
+  const queuedTask: TaskRecord = {
     ...task,
     kind: task.kind ?? (task.text.startsWith("/task ") ? "dev" : "chat"),
     state: "queued",
@@ -142,6 +165,7 @@ export const enqueueInboundTask = (task: InboundTask, logger: FastifyBaseLogger)
 
   pendingTasks.push(queuedTask);
   rememberTask(queuedTask);
+  schedulePersist();
 
   logger.info(
     {
@@ -162,8 +186,9 @@ export const ensureTaskQueueStarted = (logger: FastifyBaseLogger): void => {
   }
 
   workerStarted = true;
+  void ensureStoreLoaded();
   logger.info("task queue ready");
 };
 
-export const listRecentTasks = (): QueuedTask[] =>
+export const listRecentTasks = (): TaskRecord[] =>
   [...recentTasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20);

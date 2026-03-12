@@ -64,7 +64,16 @@ export const processIncomingText = async ({
   if (text === "/status" || text === "/tasks") {
     const replyText = listRecentTasks()
       .slice(0, 10)
-      .map((task) => `${task.state} ${task.id} ${task.kind ?? "chat"} ${task.text.slice(0, 60)}`)
+      .map((task) =>
+        [
+          `${task.state} ${task.id} ${task.kind ?? "chat"}`,
+          task.branch ? `branch=${task.branch}` : "",
+          task.text.slice(0, 60),
+          task.resultPreview ? `result=${task.resultPreview.replace(/\n/g, " ").slice(0, 80)}` : ""
+        ]
+          .filter(Boolean)
+          .join(" | ")
+      )
       .join("\n") || "no recent tasks";
     logOutgoingMessage(logger, context, replyText);
     return replyText;
