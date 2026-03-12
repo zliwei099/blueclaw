@@ -5,6 +5,7 @@ import "dotenv/config";
 import { startFeishuWsClient } from "./adapters/feishu-ws.js";
 import { config } from "./config.js";
 import { registerRoutes } from "./routes.js";
+import { ensureTaskQueueStarted } from "./task-queue.js";
 
 export const buildApp = (): FastifyInstance => {
   const app = Fastify({
@@ -29,6 +30,7 @@ const start = async (): Promise<void> => {
   const app = buildApp();
 
   try {
+    ensureTaskQueueStarted(app.log);
     await app.listen({
       port: config.port,
       host: config.host

@@ -66,3 +66,12 @@ export type FeishuEvent = {
   token?: string;
   type?: string;
 };
+
+export type InboundTask = {
+  id: string;
+  source: "feishu-webhook" | "feishu-ws";
+  messageId?: string;
+  chatId?: string;
+  userId?: string;
+  text: string;
+};

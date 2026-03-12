@@ -2,8 +2,8 @@ import * as Lark from "@larksuiteoapi/node-sdk";
 import { FastifyBaseLogger } from "fastify";
 
 import { config } from "../config.js";
-import { sendFeishuReply } from "./feishu-client.js";
-import { processIncomingText } from "../message-router.js";
+import { markMessageSeen } from "../dedup.js";
+import { enqueueInboundTask } from "../task-queue.js";
 
 type FeishuMessageReceiveEvent = {
   sender?: {
@@ -53,28 +53,30 @@ export const startFeishuWsClient = (logger: FastifyBaseLogger): { started: boole
       : {}
   ).register({
     "im.message.receive_v1": async (data: FeishuMessageReceiveEvent) => {
-      const text = parseMessageText(data.message.content);
-      const replyText = await processIncomingText({
-        text,
-        logger,
-        context: {
+      if (await markMessageSeen(data.message.message_id)) {
+        logger.info(
+          {
+            source: "feishu-ws",
+            messageId: data.message.message_id
+          },
+          "duplicate feishu websocket message skipped"
+        );
+        return { sent: false, reason: "duplicate message skipped" };
+      }
+
+      enqueueInboundTask(
+        {
+          id: data.message.message_id ?? crypto.randomUUID(),
           source: "feishu-ws",
           messageId: data.message.message_id,
           chatId: data.message.chat_id,
-          userId: data.sender?.sender_id?.user_id
-        }
-      });
+          userId: data.sender?.sender_id?.user_id,
+          text: parseMessageText(data.message.content)
+        },
+        logger
+      );
 
-      const delivery = await sendFeishuReply({
-        messageId: data.message.message_id,
-        text: replyText
-      });
-
-      if (!delivery.sent) {
-        logger.warn({ delivery, source: "feishu-ws" }, "feishu websocket reply skipped");
-      }
-
-      return delivery;
+      return { accepted: true };
     }
   });
 

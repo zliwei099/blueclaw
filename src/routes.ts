@@ -5,13 +5,18 @@ import {
   parseFeishuText,
   verifyFeishuToken
 } from "./adapters/feishu.js";
-import { sendFeishuReply } from "./adapters/feishu-client.js";
-import { processIncomingText } from "./message-router.js";
+import { markMessageSeen } from "./dedup.js";
+import { enqueueInboundTask, listRecentTasks } from "./task-queue.js";
 import { FeishuEvent } from "./types.js";
 
 export const registerRoutes = (app: FastifyInstance): void => {
   app.get("/healthz", async () => ({
     ok: true
+  }));
+
+  app.get("/tasks", async () => ({
+    ok: true,
+    tasks: listRecentTasks()
   }));
 
   app.post<{ Body: FeishuEvent }>("/webhooks/feishu/events", async (request, reply) => {
@@ -29,36 +34,26 @@ export const registerRoutes = (app: FastifyInstance): void => {
     const text = parseFeishuText(event);
     const context = getFeishuReplyContext(event);
 
-    const replyText = await processIncomingText({
-      text,
-      logger: app.log,
-      context: {
+    if (await markMessageSeen(context.messageId)) {
+      request.log.info({ messageId: context.messageId }, "duplicate feishu webhook message skipped");
+      return { ok: true, duplicate: true };
+    }
+
+    enqueueInboundTask(
+      {
+        id: context.messageId ?? crypto.randomUUID(),
         source: "feishu-webhook",
         messageId: context.messageId,
         chatId: context.chatId,
-        userId: context.userId
-      }
-    });
+        userId: context.userId,
+        text
+      },
+      app.log
+    );
 
-    try {
-      const sent = await sendFeishuReply({
-        messageId: context.messageId,
-        text: replyText
-      });
-
-      return {
-        ok: true,
-        reply: replyText,
-        delivery: sent
-      };
-    } catch (error) {
-      request.log.error({ error }, "failed to send feishu reply");
-      reply.code(502);
-      return {
-        ok: false,
-        reply: replyText,
-        error: error instanceof Error ? error.message : "unknown feishu send error"
-      };
-    }
+    return {
+      ok: true,
+      accepted: true
+    };
   });
 };
