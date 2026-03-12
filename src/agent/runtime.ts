@@ -34,12 +34,14 @@ export const handleAgentMessage = async ({
   input,
   sessionId,
   logger,
-  onProgress
+  onProgress,
+  onNeedConfirmation
 }: {
   input: string;
   sessionId: string;
   logger: FastifyBaseLogger;
   onProgress?: (message: string) => Promise<void>;
+  onNeedConfirmation?: (summary: string) => Promise<void>;
 }): Promise<string> => {
   if (!isLlmConfigured()) {
     return handleHintFallback(input);
@@ -96,6 +98,7 @@ export const handleAgentMessage = async ({
 
       if (turn.toolCalls.length === 0) {
         if (turn.needsConfirmation) {
+          await onNeedConfirmation?.(turn.needsConfirmation.summary);
           const reply = [turn.text || "执行前需要确认。", `确认事项：${turn.needsConfirmation.summary}`]
             .filter(Boolean)
             .join("\n");

@@ -1,6 +1,7 @@
 import { runCodexExec } from "../../lib/codex.js";
 import { AssistantTurn, ChatMessage, ToolDefinition } from "../../types.js";
 import {
+  appendCodexRuntimeEvent,
   loadCodexRuntimeState,
   saveCodexRuntimeState,
   summarizeCodexRuntimeState
@@ -130,6 +131,12 @@ export const generateOpenAiCodexTurn = async ({
   const runtimeSummary = summarizeCodexRuntimeState(runtimeState);
 
   try {
+    await appendCodexRuntimeEvent({
+      sessionId: effectiveSessionId,
+      type: "request",
+      detail: latestUserInputFromMessages(messages)
+    });
+
     const result = await runCodexExec({
       prompt: buildPrompt({
         messages,
@@ -142,6 +149,11 @@ export const generateOpenAiCodexTurn = async ({
     const latestUserInput = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
 
     if (payload.type === "progress") {
+      await appendCodexRuntimeEvent({
+        sessionId: effectiveSessionId,
+        type: "progress",
+        detail: (payload.progress ?? []).join(" | ") || (payload.text ?? "")
+      });
       await saveCodexRuntimeState({
         ...runtimeState,
         sessionId: effectiveSessionId,
@@ -160,6 +172,11 @@ export const generateOpenAiCodexTurn = async ({
     }
 
     if (payload.type === "need_confirmation") {
+      await appendCodexRuntimeEvent({
+        sessionId: effectiveSessionId,
+        type: "need_confirmation",
+        detail: payload.summary ?? payload.text ?? ""
+      });
       await saveCodexRuntimeState({
         ...runtimeState,
         sessionId: effectiveSessionId,
@@ -180,6 +197,11 @@ export const generateOpenAiCodexTurn = async ({
     }
 
     if (payload.type === "cancelled") {
+      await appendCodexRuntimeEvent({
+        sessionId: effectiveSessionId,
+        type: "cancelled",
+        detail: payload.text ?? "cancelled"
+      });
       await saveCodexRuntimeState({
         ...runtimeState,
         sessionId: effectiveSessionId,
@@ -206,6 +228,11 @@ export const generateOpenAiCodexTurn = async ({
           argumentsText: JSON.stringify(toolCall.arguments ?? {})
         }));
 
+      await appendCodexRuntimeEvent({
+        sessionId: effectiveSessionId,
+        type: "tool_calls",
+        detail: toolCalls.map((toolCall) => toolCall.name).join(", ")
+      });
       await saveCodexRuntimeState({
         ...runtimeState,
         sessionId: effectiveSessionId,
@@ -222,6 +249,11 @@ export const generateOpenAiCodexTurn = async ({
       };
     }
 
+    await appendCodexRuntimeEvent({
+      sessionId: effectiveSessionId,
+      type: "final",
+      detail: payload.text ?? ""
+    });
     await saveCodexRuntimeState({
       ...runtimeState,
       sessionId: effectiveSessionId,
@@ -242,15 +274,26 @@ export const generateOpenAiCodexTurn = async ({
       stderr?: string;
     };
 
-    throw new Error(
-      [
-        "openai-codex provider failed",
-        failure.message,
-        failure.stderr?.trim(),
-        failure.stdout?.trim()
-      ]
-        .filter(Boolean)
-        .join(": ")
-    );
+    const detail = [
+      failure.message,
+      failure.stderr?.trim(),
+      failure.stdout?.trim()
+    ]
+      .filter(Boolean)
+      .join(": ");
+
+    await appendCodexRuntimeEvent({
+      sessionId: effectiveSessionId,
+      type: "error",
+      detail
+    }).catch(() => undefined);
+
+    return {
+      text: `当前 Codex runtime 暂时不可用，我先降级为普通回复。错误摘要: ${detail.slice(0, 240)}`,
+      toolCalls: []
+    };
   }
 };
+
+const latestUserInputFromMessages = (messages: ChatMessage[]): string =>
+  [...messages].reverse().find((message) => message.role === "user")?.content ?? "";

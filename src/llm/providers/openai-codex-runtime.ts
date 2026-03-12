@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { config } from "../../config.js";
@@ -16,6 +16,7 @@ export type CodexRuntimeState = {
 
 const runtimePath = (sessionId: string): string =>
   join(config.sessionStoreDir, "codex-runtime", `${sanitize(sessionId)}.json`);
+const runtimeLogPath = join(config.sessionStoreDir, "codex-runtime", "events.log");
 
 const sanitize = (value: string): string => value.replace(/[^a-zA-Z0-9._-]/g, "_");
 
@@ -75,3 +76,25 @@ export const summarizeCodexRuntimeState = (state: CodexRuntimeState): string =>
   ]
     .filter(Boolean)
     .join("\n");
+
+export const appendCodexRuntimeEvent = async ({
+  sessionId,
+  type,
+  detail
+}: {
+  sessionId: string;
+  type: string;
+  detail: string;
+}): Promise<void> => {
+  await mkdir(dirname(runtimeLogPath), { recursive: true });
+  await appendFile(
+    runtimeLogPath,
+    JSON.stringify({
+      at: new Date().toISOString(),
+      sessionId,
+      type,
+      detail: detail.slice(0, 500)
+    }) + "\n",
+    "utf8"
+  );
+};

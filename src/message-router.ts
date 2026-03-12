@@ -4,6 +4,8 @@ import {
   clearPendingConfirmation,
   ConfirmableActionType,
   getPendingConfirmation,
+  hasPendingConfirmation,
+  isCancelText,
   isConfirmationText,
   PendingWorkflowStep,
   setPendingConfirmation
@@ -44,6 +46,19 @@ export const processIncomingText = async ({
 
   const conversationId = context.chatId ?? context.userId ?? "default";
 
+  if (isCancelText(text)) {
+    if (hasPendingConfirmation(conversationId)) {
+      clearPendingConfirmation(conversationId);
+      const replyText = "已取消当前等待确认的动作。";
+      logOutgoingMessage(logger, context, replyText);
+      return replyText;
+    }
+
+    const replyText = "当前没有待取消的确认动作。";
+    logOutgoingMessage(logger, context, replyText);
+    return replyText;
+  }
+
   if (isConfirmationText(text)) {
     const pending = getPendingConfirmation(conversationId);
     if (pending) {
@@ -58,11 +73,15 @@ export const processIncomingText = async ({
           onProgress
         });
       } else {
-        replyText = await executeConfirmableAction({
-          action: pending.action,
-          payload: pending.payload,
-          logger
-        });
+        if (pending.kind === "agent") {
+          replyText = "已收到确认。当前这类 agent 级确认只做提示，不会自动继续危险动作。";
+        } else {
+          replyText = await executeConfirmableAction({
+            action: pending.action,
+            payload: pending.payload,
+            logger
+          });
+        }
       }
 
       logOutgoingMessage(logger, context, replyText);
@@ -225,7 +244,14 @@ export const processIncomingText = async ({
     input: text,
     sessionId: conversationId,
     logger,
-    onProgress
+    onProgress,
+    onNeedConfirmation: async (summary) => {
+      setPendingConfirmation(conversationId, {
+        kind: "agent",
+        summary,
+        createdAt: Date.now()
+      });
+    }
   });
   logOutgoingMessage(logger, context, replyText);
   return replyText;

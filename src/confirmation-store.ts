@@ -26,6 +26,11 @@ export type PendingConfirmation =
       summary: string;
       steps: PendingWorkflowStep[];
       createdAt: number;
+    }
+  | {
+      kind: "agent";
+      summary: string;
+      createdAt: number;
     };
 
 const TTL_MS = 5 * 60 * 1000;
@@ -53,5 +58,11 @@ export const clearPendingConfirmation = (conversationId: string): void => {
   pendingByConversation.delete(conversationId);
 };
 
+export const hasPendingConfirmation = (conversationId: string): boolean =>
+  Boolean(getPendingConfirmation(conversationId));
+
 export const isConfirmationText = (text: string): boolean =>
   ["确认", "确认执行", "继续", "yes", "confirm"].includes(text.trim().toLowerCase());
+
+export const isCancelText = (text: string): boolean =>
+  ["/cancel", "取消", "取消执行", "cancel", "stop"].includes(text.trim().toLowerCase());
